@@ -105,6 +105,9 @@ export function ReceiptStep({ captureId }: { captureId: string }) {
           {integrityConfirmed ? (
             <span className="mt-1 block text-success">
               <strong>Source integrity confirmed.</strong> The server’s fingerprint matches yours.
+              <span className="block text-sm text-ink-muted">
+                This shows the file was not changed. It does not show the result sheet itself is genuine.
+              </span>
             </span>
           ) : null}
         </Segment>

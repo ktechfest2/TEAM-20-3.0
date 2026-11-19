@@ -143,7 +143,8 @@ function Row({ capture: c, online }: { capture: LocalCapture; online: boolean })
   if (c.status === "SAVED_LOCAL") detail = online ? "Will upload shortly." : "Waiting for network.";
   else if (c.status === "UPLOADING") detail = "Uploading…";
   else if (c.status === "RECEIVED")
-    detail = `Received ${c.serverReceipt ? fmt(c.serverReceipt.receivedAt) : ""} · Source integrity confirmed · Waiting for review`;
+    // Integrity claim + its scope note live on the ProofTrail page; review status is server-side.
+    detail = `Received ${c.serverReceipt ? fmt(c.serverReceipt.receivedAt) : ""} · File arrived unchanged`;
   else detail = reason ? ATTENTION_COPY[reason] : "Something went wrong. Your photo is still saved on this device.";
 
   return (
