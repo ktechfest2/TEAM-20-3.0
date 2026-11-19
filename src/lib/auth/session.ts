@@ -119,3 +119,8 @@ export async function getPrincipal(
 export function contributorRef(contributorId: string): string {
   return createHmac("sha256", getSessionSecret()).update(`ref:${contributorId}`).digest("hex").slice(0, 12);
 }
+
+/** Opaque, stable per-reviewer reference for review events (never the identity or alias). */
+export function reviewerRef(reviewerId: string): string {
+  return createHmac("sha256", getSessionSecret()).update(`reviewer:${reviewerId}`).digest("hex").slice(0, 12);
+}

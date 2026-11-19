@@ -122,3 +122,148 @@ describe.skipIf(!enabled)("SUPABASE smoke: direct signed upload + finalize", () 
     expect(multi.status).toBe(201);
   });
 });
+
+describe.skipIf(!enabled)("SUPABASE smoke: extract + confirm + review + trace", () => {
+  it("end to end", { timeout: 60_000 }, async () => {
+    const { createStorage } = await import("@/lib/storage");
+    const { createFixedWindowLimiter } = await import("@/lib/evidence/rate-limit");
+    const { submitEvidence, sha256HexNode } = await import("@/lib/evidence/service");
+    const wf = await import("@/lib/evidence/workflow");
+    const { DEMO_REVIEWERS } = await import("@/lib/auth/demo-reviewers");
+    const { createClient } = await import("@supabase/supabase-js");
+
+    const storage = createStorage(process.env);
+    expect(storage.mode).toBe("SUPABASE");
+    const deps = { storage, rateLimiter: createFixedWindowLimiter(1000, 60_000) };
+
+    const ownerRec = await storage.repo.ensureContributor({
+      id: randomUUID(),
+      alias: "Synthetic smoke-test contributor",
+      role: "CONTRIBUTOR",
+      assurance: "SYNTHETIC_DEMO",
+      synthetic: true,
+      createdAt: new Date().toISOString(),
+    });
+    const owner = { contributorId: ownerRec.id, role: ownerRec.role, alias: ownerRec.alias, synthetic: true };
+    const revRec = await storage.repo.ensureContributor({ ...DEMO_REVIEWERS[0], createdAt: new Date().toISOString() });
+    const reviewer = { contributorId: revRec.id, role: revRec.role, alias: revRec.alias, synthetic: true };
+
+    const bytes = png(`smoke-wf-${randomUUID()}`);
+    const up = await submitEvidence(
+      {
+        principal: owner,
+        file: bytes,
+        fields: {
+          electionId: "demo-election",
+          pollingUnitId: "demo-pu-012",
+          clientSubmissionId: randomUUID(),
+          originalSha256: sha256HexNode(bytes),
+          capturedAtClaimed: new Date(Date.now() - 60_000).toISOString(),
+        },
+      },
+      deps,
+    );
+    const id = (up.body as { id: string }).id;
+    const log: Record<string, unknown> = { upload: up.status, evidenceId: id, ownerId: owner.contributorId };
+
+    const acceptEarly = await wf.reviewEvidence(reviewer, id, { decision: "ACCEPTED", independenceStatus: "UNVERIFIED", reason: "smoke" }, deps);
+    log.acceptBeforeConfirm = { status: acceptEarly.status, code: (acceptEarly.body as { error?: { code: string } }).error?.code };
+
+    const ex = await wf.extractEvidence(owner, id, { mode: "AUTO" }, deps);
+    log.extract = { status: ex.status, modeUsed: (ex.body as { modeUsed?: string }).modeUsed };
+    const rv = await wf.extractEvidence(reviewer, id, { mode: "REAL_VISION" }, deps);
+    log.extractRealVision = rv.status;
+
+    const confirmBody = {
+      basedOnRevision: 1,
+      formType: "EC8A",
+      pollingUnitCodeOnSheet: "DEMO.00.00.012",
+      entries: [
+        { partyCode: "PARTY_A", votes: 145, needsReview: false },
+        { partyCode: "PARTY_B", votes: null, needsReview: true },
+        { partyCode: "PARTY_C", votes: 42, needsReview: false },
+      ],
+      accreditedVoters: null,
+      rejectedVotes: null,
+      validVotes: 397,
+      note: "smoke: PARTY_B unreadable",
+    };
+    const conf = await wf.confirmEvidence(owner, id, confirmBody, deps);
+    log.confirm = { status: conf.status, revision: (conf.body as { revisionNumber?: number }).revisionNumber };
+    log.confirmStale = (await wf.confirmEvidence(owner, id, confirmBody, deps)).status;
+    log.confirmByReviewer = (await wf.confirmEvidence(reviewer, id, { ...confirmBody, basedOnRevision: 2 }, deps)).status;
+
+    const flag = await wf.reviewEvidence(reviewer, id, { decision: "FLAGGED", independenceStatus: "UNVERIFIED", reason: "smoke flag" }, deps);
+    const accept = await wf.reviewEvidence(reviewer, id, { decision: "ACCEPTED", independenceStatus: "REVIEWER_CONFIRMED", reason: "smoke accept" }, deps);
+    log.reviews = [flag.status, (flag.body as { status: string }).status, accept.status, (accept.body as { status: string }).status];
+    log.selfReview = (await wf.reviewEvidence({ ...owner, role: "REVIEWER" }, id, { decision: "FLAGGED", independenceStatus: "UNVERIFIED", reason: "self" }, deps)).status;
+
+    const queue = (await wf.getReviewQueue(reviewer, deps)).body as { items: Array<{ id: string }> };
+    log.inQueueAfterAccept = queue.items.some((i) => i.id === id);
+
+    const tr = await wf.getTrace(reviewer, id, deps);
+    const t = tr.body as {
+      timeline: Array<{ type: string; summary: string }>;
+      revisions: Array<{ revisionNumber: number; origin: string; entries: Array<{ partyCode: string; votes: number | null; needsReview: boolean }> }>;
+      evidence: { status: string; storageMode: string };
+      integrity: unknown;
+      permissions: unknown;
+    };
+    log.trace = {
+      status: tr.status,
+      timeline: t.timeline.map((e) => e.type),
+      revisions: t.revisions.map((r) => `${r.revisionNumber}:${r.origin}`),
+      rev2Entries: t.revisions[1]?.entries,
+      evidenceStatus: t.evidence.status,
+      storageMode: t.evidence.storageMode,
+      integrity: t.integrity,
+      permissions: t.permissions,
+      bannedWords: t.timeline.some((e) => /verif|fraud|authentic/i.test(e.summary)),
+    };
+
+    // RPC path under contention: 3 concurrent extracts after ACCEPTED (exercises 23505 -> retry).
+    const concurrent = await Promise.all([1, 2, 3].map(() => wf.extractEvidence(reviewer, id, { mode: "AUTO" }, deps)));
+    const revsAfter = await storage.repo.listRevisions([id]);
+    log.concurrentExtracts = {
+      statuses: concurrent.map((r) => r.status),
+      revisionNumbers: revsAfter.map((r) => r.revisionNumber),
+      entriesPerRevision: revsAfter.map((r) => r.entries.length),
+      storedStatus: (await storage.repo.getEvidence(id))?.status,
+      lastExtractAudit: (await storage.repo.listAudit(id))
+        .filter((a) => a.eventType === "EXTRACTION_CREATED")
+        .map((a) => [a.metadata.previousStatus, a.metadata.newStatus, a.metadata.statusResetAfterReview]),
+    };
+
+    // DB-level append-only check (service role bypasses RLS but not triggers).
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+    const upd = await db.from("result_revisions").update({ note: "tamper" }).eq("evidence_id", id).eq("revision_number", 1);
+    log.revisionUpdateBlocked = upd.error ? upd.error.message : "NOT BLOCKED";
+    const del = await db.from("review_events").delete().eq("evidence_id", id);
+    log.reviewDeleteBlocked = del.error ? del.error.message : "NOT BLOCKED";
+
+    console.log("SUPABASE WORKFLOW SMOKE", JSON.stringify(log, null, 2));
+    if (process.env.POLLTRACE_SMOKE_OUT) (await import("node:fs")).writeFileSync(process.env.POLLTRACE_SMOKE_OUT, JSON.stringify(log, null, 2));
+
+    expect(up.status).toBe(201);
+    expect(log.acceptBeforeConfirm).toEqual({ status: 409, code: "NO_CONFIRMED_REVISION" });
+    expect(log.extract).toEqual({ status: 201, modeUsed: "DEMO_FIXTURE" });
+    expect(log.extractRealVision).toBe(422);
+    expect(log.confirm).toEqual({ status: 201, revision: 2 });
+    expect(log.confirmStale).toBe(409);
+    expect(log.confirmByReviewer).toBe(403);
+    expect(log.reviews).toEqual([201, "PENDING_REVIEW", 201, "ACCEPTED"]);
+    expect(log.selfReview).toBe(403);
+    expect(log.inQueueAfterAccept).toBe(false);
+    expect(tr.status).toBe(200);
+    expect((log.trace as { timeline: string[] }).timeline).toEqual(["CAPTURE_CLAIMED", "RECEIVED", "EXTRACTION", "HUMAN_CONFIRMATION", "REVIEW", "REVIEW"]);
+    expect((log.trace as { bannedWords: boolean }).bannedWords).toBe(false);
+    expect(log.concurrentExtracts).toMatchObject({
+      statuses: [201, 201, 201],
+      revisionNumbers: [1, 2, 3, 4, 5],
+      entriesPerRevision: [3, 3, 3, 3, 3],
+      storedStatus: "PENDING_REVIEW",
+    });
+    expect(log.revisionUpdateBlocked).not.toBe("NOT BLOCKED");
+    expect(log.reviewDeleteBlocked).not.toBe("NOT BLOCKED");
+  });
+});

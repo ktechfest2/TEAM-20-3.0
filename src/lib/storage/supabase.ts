@@ -13,9 +13,13 @@ import type {
   EvidenceRepository,
   EvidenceStorage,
   InsertEvidenceResult,
+  InsertRevisionResult,
   ObjectStore,
   PutResult,
+  ReviewEventRecord,
+  RevisionRecord,
 } from "./types";
+import type { EvidenceStatus } from "@/lib/contracts";
 import { assertStagingKey, ImmutableObjectConflictError } from "./types";
 
 export const EVIDENCE_BUCKET = "evidence-originals";
@@ -56,6 +60,44 @@ const toAudit = (r: Row): AuditEventRecord => ({
   eventType: String(r.event_type),
   metadata: (r.metadata as Record<string, unknown>) ?? {},
   createdAt: new Date(String(r.created_at)).toISOString(),
+});
+
+const iso = (v: unknown) => new Date(String(v)).toISOString();
+const intOrNull = (v: unknown) => (v == null ? null : Number(v));
+
+const toRevision = (r: Row): RevisionRecord => ({
+  id: String(r.id),
+  evidenceId: String(r.evidence_id),
+  revisionNumber: Number(r.revision_number),
+  origin: r.origin as RevisionRecord["origin"],
+  extractionMode: (r.extraction_mode ?? null) as RevisionRecord["extractionMode"],
+  formType: r.form_type as RevisionRecord["formType"],
+  pollingUnitCodeOnSheet: (r.polling_unit_code_on_sheet as string | null) ?? null,
+  entries: ((r.result_entries as Row[] | null) ?? []).map((e) => ({
+    partyCode: String(e.party_code),
+    votes: intOrNull(e.votes),
+    needsReview: Boolean(e.needs_review),
+  })),
+  accreditedVoters: intOrNull(r.accredited_voters),
+  rejectedVotes: intOrNull(r.rejected_votes),
+  validVotes: intOrNull(r.valid_votes),
+  warnings: Array.isArray(r.warnings) ? (r.warnings as unknown[]).map(String) : [],
+  rawExtraction: r.raw_extraction ?? null,
+  humanConfirmed: Boolean(r.human_confirmed),
+  basedOnRevision: intOrNull(r.based_on_revision),
+  note: (r.note as string | null) ?? null,
+  createdBy: r.created_by == null ? null : String(r.created_by),
+  createdAt: iso(r.created_at),
+});
+
+const toReview = (r: Row): ReviewEventRecord => ({
+  id: String(r.id),
+  evidenceId: String(r.evidence_id),
+  reviewerId: String(r.reviewer_id),
+  decision: r.decision as ReviewEventRecord["decision"],
+  independenceStatus: r.independence_status as ReviewEventRecord["independenceStatus"],
+  reason: String(r.reason),
+  createdAt: iso(r.created_at),
 });
 
 class SupabaseRepository implements EvidenceRepository {
@@ -148,6 +190,103 @@ class SupabaseRepository implements EvidenceRepository {
       .order("created_at", { ascending: true });
     if (error) throw new Error(`audit read failed: ${error.message}`);
     return (data ?? []).map(toAudit);
+  }
+
+  async updateEvidenceStatus(id: string, status: EvidenceStatus) {
+    const { error } = await this.db.from("evidence").update({ status }).eq("id", id);
+    if (error) throw new Error(`evidence status update failed: ${error.message}`);
+  }
+
+  async listEvidenceByStatus(statuses: EvidenceStatus[], limit: number) {
+    const { data, error } = await this.db
+      .from("evidence")
+      .select("*")
+      .in("status", statuses)
+      .order("received_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(limit);
+    if (error) throw new Error(`evidence queue read failed: ${error.message}`);
+    return (data ?? []).map(toEvidence);
+  }
+
+  async countEvidenceBySha(shas: string[]) {
+    const out: Record<string, number> = Object.fromEntries(shas.map((s) => [s, 0]));
+    if (shas.length === 0) return out;
+    const { data, error } = await this.db.from("evidence").select("sha256").in("sha256", [...new Set(shas)]);
+    if (error) throw new Error(`evidence sha count failed: ${error.message}`);
+    for (const r of data ?? []) {
+      const sha = String((r as Row).sha256);
+      if (sha in out) out[sha] += 1;
+    }
+    return out;
+  }
+
+  async listRevisions(evidenceIds: string[]) {
+    if (evidenceIds.length === 0) return [];
+    const { data, error } = await this.db
+      .from("result_revisions")
+      .select("*, result_entries(*)")
+      .in("evidence_id", evidenceIds)
+      .order("evidence_id", { ascending: true })
+      .order("revision_number", { ascending: true });
+    if (error) throw new Error(`revisions read failed: ${error.message}`);
+    return (data ?? []).map(toRevision);
+  }
+
+  /**
+   * Atomic: revision + entries in one transaction via the insert_result_revision RPC
+   * (migration 0005; execute granted to service_role only). Keys must match the SQL exactly.
+   * A taken (evidence_id, revision_number) surfaces as PostgREST error code 23505.
+   */
+  async insertRevision(r: RevisionRecord): Promise<InsertRevisionResult> {
+    const rev = {
+      id: r.id,
+      evidence_id: r.evidenceId,
+      revision_number: r.revisionNumber,
+      origin: r.origin,
+      extraction_mode: r.extractionMode,
+      form_type: r.formType,
+      polling_unit_code_on_sheet: r.pollingUnitCodeOnSheet,
+      accredited_voters: r.accreditedVoters,
+      rejected_votes: r.rejectedVotes,
+      valid_votes: r.validVotes,
+      warnings: r.warnings,
+      raw_extraction: r.rawExtraction ?? null,
+      human_confirmed: r.humanConfirmed,
+      based_on_revision: r.basedOnRevision,
+      note: r.note,
+      created_by: r.createdBy,
+      created_at: r.createdAt,
+    };
+    const entries = r.entries.map((e) => ({ party_code: e.partyCode, votes: e.votes, needs_review: e.needsReview }));
+    const { error } = await this.db.rpc("insert_result_revision", { rev, entries });
+    if (error?.code === UNIQUE_VIOLATION) return { inserted: false };
+    if (error) throw new Error(`revision insert failed: ${error.message}`);
+    return { inserted: true, record: r };
+  }
+
+  async listReviews(evidenceIds: string[]) {
+    if (evidenceIds.length === 0) return [];
+    const { data, error } = await this.db
+      .from("review_events")
+      .select("*")
+      .in("evidence_id", evidenceIds)
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(`reviews read failed: ${error.message}`);
+    return (data ?? []).map(toReview);
+  }
+
+  async insertReview(r: ReviewEventRecord) {
+    const { error } = await this.db.from("review_events").insert({
+      id: r.id,
+      evidence_id: r.evidenceId,
+      reviewer_id: r.reviewerId,
+      decision: r.decision,
+      independence_status: r.independenceStatus,
+      reason: r.reason,
+      created_at: r.createdAt,
+    });
+    if (error) throw new Error(`review insert failed: ${error.message}`);
   }
 }
 

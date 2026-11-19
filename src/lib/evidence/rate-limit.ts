@@ -32,3 +32,13 @@ const g = globalThis as unknown as { __polltraceUploadLimiter?: RateLimiter };
 export function uploadLimiter(): RateLimiter {
   return (g.__polltraceUploadLimiter ??= createFixedWindowLimiter(30, 60_000));
 }
+
+const gw = globalThis as unknown as { __polltraceWorkflowLimiter?: RateLimiter; __polltraceExtractLimiter?: RateLimiter };
+/** Review / confirm writes: 60 per principal per minute (per instance). */
+export function workflowLimiter(): RateLimiter {
+  return (gw.__polltraceWorkflowLimiter ??= createFixedWindowLimiter(60, 60_000));
+}
+/** Extraction (may call a paid vision API later): 10 per principal per minute (per instance). */
+export function extractLimiter(): RateLimiter {
+  return (gw.__polltraceExtractLimiter ??= createFixedWindowLimiter(10, 60_000));
+}

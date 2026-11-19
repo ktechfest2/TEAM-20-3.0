@@ -68,6 +68,7 @@ function replayOrConflict(existing: EvidenceRecord, sha256: string, mode: Storag
 export async function submitEvidence(input: SubmitInput, deps: SubmitDeps): Promise<ServiceResult> {
   const p = input.principal;
   if (!p) return fail(401, "UNAUTHENTICATED", "A session is required. Call POST /api/session first.");
+  if (p.role === "REVIEWER") return reviewerSession();
 
   const limited = rateLimited(deps.rateLimiter, `upload:${p.contributorId}`);
   if (limited) return limited;
@@ -87,6 +88,10 @@ export async function submitEvidence(input: SubmitInput, deps: SubmitDeps): Prom
 
   return commitVerifiedEvidence(p, parsed.data, input.file, deps, "MULTIPART");
 }
+
+/** Reviewer sessions assess evidence; they never submit it (client pauses sync on this code). */
+export const reviewerSession = () =>
+  fail(403, "REVIEWER_SESSION", "This is a reviewer session. Reviewers cannot submit evidence; sign in as a contributor to upload.");
 
 export function rateLimited(limiter: RateLimiter, key: string): ServiceResult | null {
   const retryAfter = limiter.hit(key);

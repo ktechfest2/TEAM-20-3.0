@@ -6,7 +6,16 @@
  * Records mirror the SQL columns (camelCase). These are internal server types;
  * public/API shapes live in src/lib/contracts and src/lib/evidence/redact.ts.
  */
-import type { EvidenceSource, EvidenceStatus } from "@/lib/contracts";
+import type {
+  EvidenceSource,
+  EvidenceStatus,
+  ExtractionMode,
+  FormType,
+  Independence,
+  ResultField,
+  ReviewDecision,
+} from "@/lib/contracts";
+import type { RevisionOrigin } from "@/lib/contracts/trace";
 
 export type StorageMode = "LOCAL_DEV" | "SUPABASE";
 export type ContributorRole = "CONTRIBUTOR" | "REVIEWER";
@@ -46,6 +55,44 @@ export interface AuditEventRecord {
   createdAt: string;
 }
 
+/** One immutable result revision (result_revisions row + its result_entries). */
+export interface RevisionRecord {
+  id: string;
+  evidenceId: string;
+  revisionNumber: number;
+  origin: RevisionOrigin;
+  extractionMode: ExtractionMode | null;
+  formType: FormType;
+  pollingUnitCodeOnSheet: string | null;
+  entries: ResultField[];
+  accreditedVoters: number | null;
+  rejectedVotes: number | null;
+  validVotes: number | null;
+  warnings: string[];
+  /** Untrusted machine output, or the human's submitted payload, kept verbatim. */
+  rawExtraction: unknown;
+  humanConfirmed: boolean;
+  basedOnRevision: number | null;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface ReviewEventRecord {
+  id: string;
+  evidenceId: string;
+  reviewerId: string;
+  decision: ReviewDecision;
+  independenceStatus: Independence;
+  reason: string;
+  createdAt: string;
+}
+
+export type InsertRevisionResult =
+  | { inserted: true; record: RevisionRecord }
+  /** unique(evidence_id, revision_number) taken: someone else wrote that number first. */
+  | { inserted: false };
+
 export type InsertEvidenceResult =
   | { inserted: true; record: EvidenceRecord }
   /** unique(contributor_id, client_submission_id) already taken; existing row returned. */
@@ -62,6 +109,22 @@ export interface EvidenceRepository {
   /** Append-only. There is intentionally no update/delete. */
   appendAudit(event: AuditEventRecord): Promise<void>;
   listAudit(evidenceId: string): Promise<AuditEventRecord[]>;
+
+  /** Status is the ONLY mutable evidence column (DB trigger guards original fields). */
+  updateEvidenceStatus(id: string, status: EvidenceStatus): Promise<void>;
+  /** Evidence awaiting a decision, oldest received first. */
+  listEvidenceByStatus(statuses: EvidenceStatus[], limit: number): Promise<EvidenceRecord[]>;
+  /** Number of evidence rows per sha256 (including the row itself). */
+  countEvidenceBySha(shas: string[]): Promise<Record<string, number>>;
+
+  /** Append-only; ordered by revisionNumber ascending. */
+  listRevisions(evidenceIds: string[]): Promise<RevisionRecord[]>;
+  /** Never overwrites: returns {inserted:false} if that revision number already exists. */
+  insertRevision(record: RevisionRecord): Promise<InsertRevisionResult>;
+
+  /** Append-only; ordered by createdAt ascending. */
+  listReviews(evidenceIds: string[]): Promise<ReviewEventRecord[]>;
+  insertReview(record: ReviewEventRecord): Promise<void>;
 }
 
 export type PutResult = "CREATED" | "ALREADY_PRESENT_IDENTICAL";

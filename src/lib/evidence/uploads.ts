@@ -23,6 +23,7 @@ import {
   invalid,
   rateLimited,
   receiptOf,
+  reviewerSession,
   replayOrConflict,
   type ServiceResult,
   type SubmitDeps,
@@ -67,6 +68,7 @@ const nowOf = (deps: SubmitDeps) => (deps.now ?? (() => new Date()))();
 
 export async function initUpload(p: Principal | null, body: unknown, deps: SubmitDeps): Promise<ServiceResult> {
   if (!p) return fail(401, "UNAUTHENTICATED", "A session is required. Call POST /api/session first.");
+  if (p.role === "REVIEWER") return reviewerSession();
   const limited = rateLimited(deps.rateLimiter, `upload-init:${p.contributorId}`);
   if (limited) return limited;
 
@@ -137,10 +139,11 @@ async function discardStaging(deps: SubmitDeps, key: string) {
 
 export async function finalizeUpload(p: Principal | null, body: unknown, deps: SubmitDeps): Promise<ServiceResult> {
   if (!p) return fail(401, "UNAUTHENTICATED", "A session is required. Call POST /api/session first.");
+  if (p.role === "REVIEWER") return reviewerSession();
   const limited = rateLimited(deps.rateLimiter, `upload-finalize:${p.contributorId}`);
   if (limited) return limited;
 
-  const parsed = UploadFinalizeRequestExt.safeParse(body);
+  const parsed = UploadFinalizeRequest.safeParse(body);
   if (!parsed.success) return invalid("INVALID_REQUEST", "Expected { clientSubmissionId, intentToken }.", parsed.error);
 
   const notFound = fail(404, "UPLOAD_INTENT_NOT_FOUND", "No upload was started for this submission. Call POST /api/evidence/uploads.");

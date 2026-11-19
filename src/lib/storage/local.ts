@@ -15,18 +15,26 @@ import type {
   EvidenceRepository,
   EvidenceStorage,
   InsertEvidenceResult,
+  InsertRevisionResult,
   ObjectStore,
   PutResult,
+  ReviewEventRecord,
+  RevisionRecord,
 } from "./types";
+import type { EvidenceStatus } from "@/lib/contracts";
 import { assertStagingKey, ImmutableObjectConflictError } from "./types";
 
 interface LocalDb {
   contributors: Record<string, ContributorRecord>;
   evidence: Record<string, EvidenceRecord>;
   audit: AuditEventRecord[];
+  revisions: RevisionRecord[];
+  reviews: ReviewEventRecord[];
 }
 
-const emptyDb = (): LocalDb => ({ contributors: {}, evidence: {}, audit: [] });
+const emptyDb = (): LocalDb => ({ contributors: {}, evidence: {}, audit: [], revisions: [], reviews: [] });
+/** Deep copy so callers can never mutate stored (append-only) records in place. */
+const clone = <T>(v: T): T => structuredClone(v);
 
 /** Object keys are generated server-side, but still refuse anything path-like. */
 const SAFE_KEY = /^[a-z0-9][a-z0-9/_.-]*$/i;
@@ -97,7 +105,7 @@ class LocalRepository implements EvidenceRepository {
   }
 
   getEvidence(id: string) {
-    return this.withLock(async (db) => ({ result: db.evidence[id] ?? null, write: false }));
+    return this.withLock(async (db) => ({ result: db.evidence[id] ? clone(db.evidence[id]) : null, write: false }));
   }
 
   insertEvidence(record: EvidenceRecord): Promise<InsertEvidenceResult> {
@@ -121,9 +129,80 @@ class LocalRepository implements EvidenceRepository {
 
   listAudit(evidenceId: string) {
     return this.withLock(async (db) => ({
-      result: db.audit.filter((a) => a.evidenceId === evidenceId),
+      result: clone(db.audit.filter((a) => a.evidenceId === evidenceId)),
       write: false,
     }));
+  }
+
+  updateEvidenceStatus(id: string, status: EvidenceStatus) {
+    return this.withLock(async (db) => {
+      const e = db.evidence[id];
+      if (!e) throw new Error("evidence not found");
+      e.status = status; // only mutable column
+      return { result: undefined, write: true };
+    });
+  }
+
+  listEvidenceByStatus(statuses: EvidenceStatus[], limit: number) {
+    return this.withLock(async (db) => ({
+      result: clone(
+        Object.values(db.evidence)
+          .filter((e) => statuses.includes(e.status))
+          .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id))
+          .slice(0, limit),
+      ),
+      write: false,
+    }));
+  }
+
+  countEvidenceBySha(shas: string[]) {
+    return this.withLock(async (db) => {
+      const out: Record<string, number> = Object.fromEntries(shas.map((s) => [s, 0]));
+      for (const e of Object.values(db.evidence)) if (e.sha256 in out) out[e.sha256] += 1;
+      return { result: out, write: false };
+    });
+  }
+
+  listRevisions(evidenceIds: string[]) {
+    return this.withLock(async (db) => ({
+      result: clone(
+        db.revisions
+          .filter((r) => evidenceIds.includes(r.evidenceId))
+          .sort((a, b) => a.evidenceId.localeCompare(b.evidenceId) || a.revisionNumber - b.revisionNumber),
+      ),
+      write: false,
+    }));
+  }
+
+  insertRevision(record: RevisionRecord): Promise<InsertRevisionResult> {
+    return this.withLock<InsertRevisionResult>(async (db) => {
+      db.revisions ??= [];
+      const taken = db.revisions.some(
+        (r) => r.evidenceId === record.evidenceId && r.revisionNumber === record.revisionNumber,
+      );
+      if (taken) return { result: { inserted: false }, write: false };
+      db.revisions.push(clone(record));
+      return { result: { inserted: true, record: clone(record) }, write: true };
+    });
+  }
+
+  listReviews(evidenceIds: string[]) {
+    return this.withLock(async (db) => ({
+      result: clone(
+        (db.reviews ?? [])
+          .filter((r) => evidenceIds.includes(r.evidenceId))
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+      ),
+      write: false,
+    }));
+  }
+
+  insertReview(record: ReviewEventRecord) {
+    return this.withLock(async (db) => {
+      db.reviews ??= [];
+      db.reviews.push(clone(record));
+      return { result: undefined, write: true };
+    });
   }
 }
 
