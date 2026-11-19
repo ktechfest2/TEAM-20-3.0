@@ -141,8 +141,15 @@ export const EvidenceReceipt = z.object({
 });
 export type EvidenceReceipt = z.infer<typeof EvidenceReceipt>;
 
+/**
+ * ACCEPTED: evidence is usable in comparison (requires a human-confirmed revision).
+ * REJECTED: not usable. FLAGGED: needs another look; evidence stays PENDING_REVIEW.
+ */
+export const ReviewDecision = z.enum(["ACCEPTED", "REJECTED", "FLAGGED"]);
+export type ReviewDecision = z.infer<typeof ReviewDecision>;
+
 export const ReviewRequest = z.object({
-  decision: z.enum(["ACCEPTED", "REJECTED"]),
+  decision: ReviewDecision,
   independenceStatus: Independence,
   reason: z.string().min(3).max(2000),
 });
