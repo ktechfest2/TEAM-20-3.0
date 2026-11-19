@@ -29,6 +29,14 @@ export default defineConfig({
         url: `http://localhost:${PORT}/capture`,
         reuseExistingServer: false,
         timeout: 120_000,
-        env: { POLLTRACE_LOCAL_DATA_DIR: dataDir, POLLTRACE_DEMO_REVIEWERS: "1" },
+        env: {
+          POLLTRACE_LOCAL_DATA_DIR: dataDir,
+          POLLTRACE_DEMO_REVIEWERS: "1",
+          // Local runs use the isolated LOCAL_DEV store, never the shared Supabase project
+          // (empty values win over .env.local). Opt in with POLLTRACE_E2E_SUPABASE=1.
+          ...(process.env.POLLTRACE_E2E_SUPABASE === "1"
+            ? {}
+            : { NEXT_PUBLIC_SUPABASE_URL: "", NEXT_PUBLIC_SUPABASE_ANON_KEY: "", SUPABASE_SERVICE_ROLE_KEY: "" }),
+        },
       },
 });

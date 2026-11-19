@@ -9,7 +9,7 @@ import {
   type VerificationInput,
   type VerificationReferenceInput,
 } from "@/lib/contracts/verification";
-import { computeVerification, EXCLUDED } from "./index";
+import { computeVerification, EXCLUDED, partyLabel } from "./index";
 
 interface Scenario {
   id: string;
@@ -109,13 +109,22 @@ describe("fixture scenarios (fixtures/demo_cases.json)", () => {
       expect(b.referenceMinusWitness).toBe(fixture.expectedReferenceMinusWitness.PARTY_B);
       expect(out.differences.filter((d) => d.partyCode !== "PARTY_B").every((d) => d.referenceMinusWitness === 0)).toBe(true);
       expect(out.differenceUnconfirmed).toBe(false);
+      expect(out.reasons[0]).toBe(
+        "The reference record shows different figures from the reviewed witness photos for Party B. This is a difference to check, not proof of wrongdoing.",
+      );
       expect(out.reasons).toContain(
-        "Reference is 60 higher for PARTY_B (270 vs 210). This is a difference to check, not proof of wrongdoing.",
+        "Party B: the reference shows 270 and the reviewed witness figure is 210 (reference is 60 higher). This is a difference to check, not proof of wrongdoing.",
       );
     }
     if (s.id === "conflicting-witnesses") {
       expect(out.conflictingParties).toEqual(["PARTY_B"]);
       expect(out.witnessFigures).toEqual({ PARTY_A: 145, PARTY_B: null, PARTY_C: 42 });
+      expect(out.reasons).toEqual(
+        expect.arrayContaining([
+          "Accepted photos disagree on Party B. No figure is treated as correct.",
+          "Party B: photos show 210 and 215.",
+        ]),
+      );
     }
     if (s.id === "same-photo-twice") {
       expect(out.distinctOriginals).toBe(1);
@@ -159,7 +168,7 @@ describe("additional cases", () => {
     expect(out.status).toBe("CORROBORATED");
     expect(out.differenceUnconfirmed).toBe(true);
     expect(out.differences.find((d) => d.partyCode === "PARTY_B")!.referenceMinusWitness).toBe(60);
-    expect(out.reasons.some((r) => r.startsWith("Unconfirmed: Reference is 60 higher for PARTY_B"))).toBe(true);
+    expect(out.reasons.some((r) => r.startsWith("Unconfirmed difference for Party B: the reference shows 270 and the reviewed witness figure is 210 (reference is 60 higher)."))).toBe(true);
   });
 
   it.each([
@@ -206,7 +215,7 @@ describe("additional cases", () => {
     expect(out.witnessFigures).toEqual({ PARTY_A: 145, PARTY_B: null, PARTY_C: 42 });
     expect(out.differences.find((d) => d.partyCode === "PARTY_B")!.referenceMinusWitness).toBeNull();
     expect(out.differenceUnconfirmed).toBe(true);
-    expect(out.reasons).toContain("PARTY_B could not be read on every accepted photo, so it is not compared.");
+    expect(out.reasons).toContain("Party B could not be read on every accepted photo, so it is not compared.");
   });
 
   it("missing party key is treated as unknown, not zero", () => {
@@ -234,7 +243,7 @@ describe("additional cases", () => {
     expect(out.status).toBe("REFERENCE_DISCREPANCY");
     expect(out.differences[0].referenceMinusWitness).toBe(-5);
     expect(out.reasons).toContain(
-      "Reference is 5 lower for PARTY_A (140 vs 145). This is a difference to check, not proof of wrongdoing.",
+      "Party A: the reference shows 140 and the reviewed witness figure is 145 (reference is 5 lower). This is a difference to check, not proof of wrongdoing.",
     );
   });
 
@@ -296,7 +305,38 @@ describe("neutral language", () => {
     expect(allOutputs.length).toBeGreaterThan(15);
     for (const out of allOutputs) {
       expect(out.reasons.length).toBeGreaterThan(0);
-      for (const r of out.reasons) expect(r).not.toMatch(BANNED);
+      for (const r of out.reasons) {
+        expect(r).not.toMatch(BANNED);
+        expect(r).not.toMatch(/PARTY_[A-Z]/);
+      }
     }
+  });
+});
+
+describe("partyLabel", () => {
+  it.each([
+    ["PARTY_B", "Party B"],
+    ["PARTY_A", "Party A"],
+    ["DEMO_PARTY_12", "Demo Party 12"],
+    ["APC", "APC"],
+    ["party_b", "party_b"],
+    ["PARTY-B", "PARTY-B"],
+  ])("%s → %s", (code, label) => expect(partyLabel(code)).toBe(label));
+});
+
+describe("multi-party wording", () => {
+  it("lists three conflicting values in ascending order and multiple parties in the headline", () => {
+    const out = computeVerification(
+      input(
+        [ev({ figures: { ...WITNESS, PARTY_B: 215 } }), ev(), ev({ figures: { ...WITNESS, PARTY_B: 212 } })],
+        null,
+      ),
+    );
+    expect(out.reasons).toContain("Party B: photos show 210, 212 and 215.");
+    const disc = computeVerification(input([ev(), ev()], ref({ figures: { PARTY_A: 140, PARTY_B: 270, PARTY_C: 42 } })));
+    expect(disc.reasons[0]).toBe(
+      "The reference record shows different figures from the reviewed witness photos for Party A and Party B. This is a difference to check, not proof of wrongdoing.",
+    );
+    for (const r of [...out.reasons, ...disc.reasons]) expect(r).not.toMatch(/PARTY_[A-Z]/);
   });
 });

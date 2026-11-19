@@ -87,6 +87,25 @@ function pickFormType(forms: FormType[]): FormType | null {
   return tied[0] ?? FORM_TIE_ORDER[0];
 }
 
+/**
+ * Human label for a party code, so public reasons never show raw codes.
+ * "PARTY_B" → "Party B"; any code made of A–Z/0–9 words joined by "_" is split and title-cased.
+ * Any other shape (no "_", lower case, punctuation) is returned unchanged.
+ */
+export function partyLabel(code: string): string {
+  if (!/^[A-Z0-9]+(_[A-Z0-9]+)+$/.test(code)) return code;
+  return code
+    .split("_")
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/** "a", "a and b", "a, b and c" — deterministic list joining for reasons. */
+function joinList(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -160,7 +179,7 @@ export function computeVerification(rawInput: VerificationInput): UnitVerificati
       const distinct = [...new Set(known)].sort((a, b) => a - b);
       if (distinct.length > 1) {
         conflictingParties.push(party);
-        conflictDetail.push(`${party}: ${distinct.join(" vs ")}`);
+        conflictDetail.push(`${partyLabel(party)}: photos show ${joinList(distinct.map(String))}.`);
         witnessFigures[party] = null;
       } else if (known.length < values.length) {
         partlyUnknown.push(party);
@@ -225,13 +244,13 @@ export function computeVerification(rawInput: VerificationInput): UnitVerificati
       break;
     case "CONFLICTING_EVIDENCE":
       reasons.push(
-        `Accepted photos disagree on ${conflictingParties.join(", ")}. No figure is treated as correct.`,
+        `Accepted photos disagree on ${joinList(conflictingParties.map(partyLabel))}. No figure is treated as correct.`,
       );
-      for (const c of conflictDetail) reasons.push(`Figures read for ${c}.`);
+      reasons.push(...conflictDetail);
       break;
     case "REFERENCE_DISCREPANCY":
       reasons.push(
-        `${plural(independentSources, "independent source agrees", "independent sources agree")}, and the reference differs from them. This is a difference to check, not proof of wrongdoing.`,
+        `The reference record shows different figures from the reviewed witness photos for ${joinList(knownNonZero.map((d) => partyLabel(d.partyCode)))}. This is a difference to check, not proof of wrongdoing.`,
       );
       break;
     case "CORROBORATED":
@@ -284,15 +303,18 @@ export function computeVerification(rawInput: VerificationInput): UnitVerificati
     );
   }
   for (const party of partlyUnknown) {
-    reasons.push(`${party} could not be read on every accepted photo, so it is not compared.`);
+    reasons.push(`${partyLabel(party)} could not be read on every accepted photo, so it is not compared.`);
   }
 
   if (reference && eligible.length > 0) {
     for (const d of knownNonZero) {
       const n = d.referenceMinusWitness!;
-      const prefix = status === "REFERENCE_DISCREPANCY" ? "" : "Unconfirmed: ";
+      const label =
+        status === "REFERENCE_DISCREPANCY"
+          ? partyLabel(d.partyCode)
+          : `Unconfirmed difference for ${partyLabel(d.partyCode)}`;
       reasons.push(
-        `${prefix}Reference is ${Math.abs(n)} ${n > 0 ? "higher" : "lower"} for ${d.partyCode} (${d.reference} vs ${d.witness}). This is a difference to check, not proof of wrongdoing.`,
+        `${label}: the reference shows ${d.reference} and the reviewed witness figure is ${d.witness} (reference is ${Math.abs(n)} ${n > 0 ? "higher" : "lower"}). This is a difference to check, not proof of wrongdoing.`,
       );
     }
     if (!reference.sourceVerified) {
@@ -305,7 +327,7 @@ export function computeVerification(rawInput: VerificationInput): UnitVerificati
       );
     }
     const missingRef = differences.filter((d) => d.reference === null).map((d) => d.partyCode);
-    if (missingRef.length) reasons.push(`The reference has no figure for ${missingRef.join(", ")}.`);
+    if (missingRef.length) reasons.push(`The reference has no figure for ${joinList(missingRef.map(partyLabel))}.`);
     if (
       knownNonZero.length === 0 &&
       differences.length > 0 &&
