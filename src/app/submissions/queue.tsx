@@ -159,8 +159,9 @@ function Row({ capture: c, online }: { capture: LocalCapture; online: boolean })
           <p>
             {unit?.name} {c.synthetic ? <DemoTag /> : null}
           </p>
+          <p className="text-sm text-ink-muted">Saved {fmt(c.capturedAt)} (phone clock)</p>
           <p className="text-sm text-ink-muted">
-            Saved {fmt(c.capturedAt)} · Fingerprint <span className="font-mono">{shortFingerprint(c.sha256)}</span>
+            Fingerprint <span className="font-mono whitespace-nowrap text-ink">{shortFingerprint(c.sha256)}</span>
           </p>
         </div>
       </div>

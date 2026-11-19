@@ -87,16 +87,22 @@ export function PhotoStep({
   }
 
   const unitLine = (
-    <p className="mt-2 flex flex-wrap items-center gap-x-2">
-      <span className="font-mono font-semibold">{unit.code}</span>
-      <span aria-hidden>·</span>
-      <span>
-        {unit.name} {unit.synthetic ? <DemoTag /> : null}
-      </span>
-      <button type="button" onClick={onChangeUnit} className="min-h-11 px-1 text-primary underline">
+    <div className="mt-3 flex items-start justify-between gap-3 rounded-md border border-rule bg-surface px-4 py-2">
+      <p className="min-w-0">
+        <span className="block font-mono font-semibold">{unit.code}</span>
+        <span className="block">
+          {unit.name} {unit.synthetic ? <DemoTag /> : null}
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={onChangeUnit}
+        aria-label={`Change polling unit (now ${unit.code})`}
+        className="min-h-11 shrink-0 px-1 font-bold text-primary underline"
+      >
         Change
       </button>
-    </p>
+    </div>
   );
 
   const pickers = (

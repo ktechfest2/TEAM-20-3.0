@@ -20,7 +20,7 @@ export function MainNav() {
   );
   return (
     <nav aria-label="Main" className="border-b border-rule bg-surface text-ink">
-      <ul className="mx-auto grid max-w-6xl grid-cols-3">
+      <ul className="mx-auto grid max-w-6xl grid-cols-3 md:flex md:gap-2 md:px-4">
         {TABS.map((t) => {
           const current = pathname === t.href || pathname.startsWith(`${t.href}/`);
           return (
@@ -28,7 +28,7 @@ export function MainNav() {
               <Link
                 href={t.href}
                 aria-current={current ? "page" : undefined}
-                className={`flex min-h-12 items-center justify-center gap-2 border-b-[3px] px-2 text-sm no-underline ${
+                className={`flex min-h-12 items-center justify-center gap-2 border-b-[3px] px-2 text-sm no-underline md:px-4 ${
                   current ? "border-primary font-bold text-primary" : "border-transparent text-ink"
                 }`}
               >

@@ -62,6 +62,11 @@
     font-size: var(--text-base);
     line-height: var(--text-base--line-height);
   }
+  p,
+  li,
+  dd {
+    text-wrap: pretty;
+  }
   ::selection {
     background: var(--color-primary-tint);
     color: var(--color-ink);
