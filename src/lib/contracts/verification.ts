@@ -78,6 +78,36 @@ export const FieldDifference = z.object({
 });
 export type FieldDifference = z.infer<typeof FieldDifference>;
 
+/* ------------------------------------------------------------ references (lead-frozen) */
+
+/**
+ * Provenance review of a reference record by a reviewer OTHER than the importer
+ * (POST /api/references/:id/review, append-only). sourceVerified = latest review is
+ * SOURCE_CONFIRMED. This means provenance was reviewed — never "INEC verified".
+ */
+export const ReferenceReviewRequest = z.object({
+  decision: z.enum(["SOURCE_CONFIRMED", "SOURCE_REJECTED"]),
+  reason: z.string().min(3).max(2000),
+});
+export type ReferenceReviewRequest = z.infer<typeof ReferenceReviewRequest>;
+
+export const ReferenceView = VerificationReferenceInput.extend({
+  electionId: z.string(),
+  pollingUnitId: z.string(),
+  importedByViewer: z.boolean(),
+  createdAt: z.iso.datetime(),
+  reviews: z.array(
+    z.object({
+      decision: z.enum(["SOURCE_CONFIRMED", "SOURCE_REJECTED"]),
+      reason: z.string(),
+      reviewerRef: z.string(),
+      byViewer: z.boolean(),
+      createdAt: z.iso.datetime(),
+    }),
+  ),
+});
+export type ReferenceView = z.infer<typeof ReferenceView>;
+
 export const UnitVerification = z.object({
   electionId: z.string(),
   pollingUnitId: z.string(),
