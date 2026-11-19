@@ -1,3 +1,4 @@
+import { unstable_rethrow } from "next/navigation";
 import { StorageConfigError } from "@/lib/storage";
 import { errorBody, type ServiceResult } from "./service";
 
@@ -14,6 +15,8 @@ export const fromService = (r: ServiceResult) => json(r.status, r.body, r.header
 
 /** Never leak internals; config problems are 503 so clients keep the item queued. */
 export function serverError(err: unknown): Response {
+  // Never swallow Next.js control-flow errors (prerender bail-out, notFound, redirects).
+  unstable_rethrow(err);
   if (err instanceof StorageConfigError) {
     console.error(`[polltrace] storage config: ${err.message}`);
     return json(503, errorBody("STORAGE_NOT_CONFIGURED", "Evidence storage is not configured on this server."));
