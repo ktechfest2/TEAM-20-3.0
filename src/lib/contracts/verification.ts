@@ -39,6 +39,8 @@ export const VerificationReferenceInput = z.object({
   sourceUrl: z.string().nullable(),
   /** Provenance reviewed by an authorised reviewer. NOT INEC certification. */
   sourceVerified: z.boolean(),
+  /** Latest provenance review outcome (sourceVerified === (reviewState === "CONFIRMED")). */
+  reviewState: z.enum(["NOT_REVIEWED", "CONFIRMED", "REJECTED"]).default("NOT_REVIEWED"),
   synthetic: z.boolean(),
   figures: z.record(z.string(), z.number().int().min(0)),
 });
