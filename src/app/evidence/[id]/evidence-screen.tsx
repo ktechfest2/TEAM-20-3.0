@@ -125,30 +125,8 @@ function Trace({
         <BackLink reviewer={reviewer} />
       </div>
 
-      {/* Photo: first on phones, sticky left column on wide screens. */}
-      <section aria-label="Original photo" className="order-2 lg:order-none lg:col-span-5 lg:col-start-1 lg:row-span-2 lg:row-start-2">
-        <div className="lg:sticky lg:top-4">
-          <OriginalPhoto
-            src={trace.originalUrl}
-            synthetic={e.synthetic}
-            alt={`Original photo of the result sheet sent for ${e.pollingUnitCode}`}
-            className="overflow-hidden rounded-lg border border-rule bg-sunken"
-            imgClassName="w-full lg:max-h-[calc(100dvh-6rem)] lg:object-contain"
-          />
-          <p className="mt-2 text-sm text-ink-muted">Original photo, unchanged since upload.</p>
-          <a
-            href={trace.originalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-11 items-center gap-2 font-bold text-primary"
-          >
-            Open full size <ExternalLink aria-hidden size={18} />
-            <span className="sr-only">(opens in a new tab)</span>
-          </a>
-        </div>
-      </section>
-
-      <div className="order-1 grid content-start gap-6 lg:order-none lg:col-span-7 lg:col-start-6 lg:row-start-2">
+      {/* Header and next step come first in DOM (reading order); the photo follows, sticky left column on wide screens. */}
+      <div className="grid content-start gap-6 lg:col-span-7 lg:col-start-6 lg:row-start-2">
         <header>
           <h1 className="text-xl md:text-2xl">
             Result photo for <span className="font-mono">{e.pollingUnitCode}</span>
@@ -187,7 +165,29 @@ function Trace({
         ) : null}
       </div>
 
-      <div className="order-3 grid content-start gap-8 lg:order-none lg:col-span-7 lg:col-start-6 lg:row-start-3">
+      <section aria-label="Original photo" className="lg:col-span-5 lg:col-start-1 lg:row-span-2 lg:row-start-2">
+        <div className="lg:sticky lg:top-4">
+          <OriginalPhoto
+            src={trace.originalUrl}
+            synthetic={e.synthetic}
+            alt={`Original photo of the result sheet sent for ${e.pollingUnitCode}`}
+            className="overflow-hidden rounded-lg border border-rule bg-sunken"
+            imgClassName="w-full lg:max-h-[calc(100dvh-6rem)] lg:object-contain"
+          />
+          <p className="mt-2 text-sm text-ink-muted">Original photo, unchanged since upload.</p>
+          <a
+            href={trace.originalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center gap-2 font-bold text-primary"
+          >
+            Open full size <ExternalLink aria-hidden size={18} />
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
+        </div>
+      </section>
+
+      <div className="grid content-start gap-8 lg:col-span-7 lg:col-start-6 lg:row-start-3">
         <IntactSlip trace={trace} />
 
         <section id="figures" aria-labelledby="figures-h" className="scroll-mt-4">
@@ -218,7 +218,10 @@ function Trace({
                     Needs a connection
                   </p>
                 ) : (
-                  <Link href={`/evidence/${e.id}/figures?step=enter`} className="font-bold text-primary">
+                  <Link
+                    href={`/evidence/${e.id}/figures?step=enter`}
+                    className="inline-flex min-h-11 items-center font-bold text-primary"
+                  >
                     Correct the figures
                   </Link>
                 )

@@ -12,7 +12,6 @@ import {
 } from "@/lib/contracts/trace";
 import type { ExtractionMode, FormType } from "@/lib/contracts";
 import { PARTY_ROSTER } from "@/lib/seed/registry";
-import { ActionBar } from "@/components/action-bar";
 import { DemoTag } from "@/components/demo-band";
 import { apiJson, issueMessages } from "@/components/client/api";
 import { figureLabel, figureValue, FIGURE_KEYS, FORM_TYPE_LABEL, Unreadable, Warnings, type FigureKey } from "@/components/evidence/figures";
@@ -188,9 +187,10 @@ function Flow({ trace, reloadTrace }: { trace: EvidenceTrace; reloadTrace: () =>
   };
 
   return (
-    <div className="grid gap-x-8 lg:grid-cols-12">
+    <div className="lg:grid lg:grid-cols-12 lg:gap-x-8">
       <div className="lg:col-span-12">{backLink}</div>
-      <div className="lg:col-span-7">
+      {/* Block flow below lg: the sticky wrapper's containing block is the whole page, not a grid row. */}
+      <div data-sticky-photo className="sticky top-0 z-10 -mx-4 bg-canvas px-4 lg:top-4 lg:col-span-7 lg:mx-0 lg:self-start lg:px-0">
         <PhotoPanel src={trace.originalUrl} synthetic={trace.evidence.synthetic} code={trace.evidence.pollingUnitCode} />
       </div>
       <div className="lg:col-span-5">
@@ -360,10 +360,7 @@ function ModeStep({
         ) : null}
       </div>
 
-      <div className="md:hidden">
-        <ActionBar note={note}>{actions}</ActionBar>
-      </div>
-      <div className="mt-6 hidden max-w-sm md:block">
+      <div className="mt-6 grid gap-2 md:max-w-sm">
         {actions}
         {note}
       </div>
@@ -557,12 +554,18 @@ function EnterStep({
         />
       </form>
 
-      <div className="md:hidden">
-        <ActionBar>{actions}</ActionBar>
-      </div>
-      <div className="mt-6 hidden gap-2 md:grid">{actions}</div>
+      <div className="mt-6 grid gap-2">{actions}</div>
     </section>
   );
+}
+
+/** If the focused field (and its label) sits under the sticky photo, scroll it just below. */
+function keepClearOfStickyPhoto(input: HTMLElement) {
+  const panel = document.querySelector("[data-sticky-photo]");
+  if (!panel || getComputedStyle(panel).position !== "sticky") return;
+  const row = input.parentElement ?? input;
+  const covered = panel.getBoundingClientRect().bottom + 8 - row.getBoundingClientRect().top;
+  if (covered > 0) window.scrollBy({ top: -covered });
 }
 
 function NumberField({
@@ -611,6 +614,7 @@ function NumberField({
         disabled={field.unreadable}
         onChange={(e) => setField(k, { value: e.target.value, fromDemo: false, flagged: field.flagged })}
         onBlur={() => setTouched(true)}
+        onFocus={(e) => keepClearOfStickyPhoto(e.currentTarget)}
         aria-invalid={invalid ? true : undefined}
         aria-describedby={describedBy || undefined}
         className={`field mt-1 w-36 text-right font-mono ${
@@ -673,9 +677,8 @@ function ThingsToCheck({
           ))}
         </ul>
       ) : null}
-      <div aria-live="polite">
-        <Warnings warnings={checks} />
-      </div>
+      {/* Not a live region: re-announcing on every keystroke is noise. Shown again on the check step. */}
+      <Warnings warnings={checks} />
       <Warnings warnings={serverWarnings} heading={`Noted by the server when version ${version} was saved:`} />
     </section>
   );
@@ -780,13 +783,15 @@ function CheckStep({
   );
   const note = !online ? <p className="text-sm">Needs a connection</p> : undefined;
 
-  const rows: Array<{ key: FigureKey | null; label: string; value: ReactNode; demo: boolean }> = [
+  const rows: Array<{ key: FigureKey | null; label: string; value: ReactNode; demo: boolean; stack?: boolean }> = [
     { key: null, label: "Form type", value: FORM_TYPE_LABEL[draft.formType], demo: false },
     {
       key: null,
       label: "Code on sheet",
       value: draft.code.trim() || <span className="font-sans text-ink-muted">Not given</span>,
       demo: false,
+      // Codes are long: full width under the label, so they never split mid-code at 360px.
+      stack: true,
     },
     ...FIGURE_KEYS.map((k) => {
       const n = fieldNumber(draft.fields[k]);
@@ -837,15 +842,26 @@ function CheckStep({
         <tbody>
           {rows.map((r, i) => (
             <tr key={r.label}>
-              <th scope="row" className={`px-4 py-2 text-left font-normal ${i ? "border-t border-rule" : ""}`}>
+              <th
+                scope="row"
+                colSpan={r.stack ? 2 : undefined}
+                className={`px-4 py-2 text-left font-normal ${i ? "border-t border-rule" : ""}`}
+              >
                 {r.label}
+                {r.stack ? (
+                  <span className="mt-0.5 block font-mono [overflow-wrap:anywhere]">{r.value}</span>
+                ) : null}
                 {r.demo ? (
                   <span className="mt-0.5 flex flex-wrap items-center gap-1 text-sm">
                     <DemoTag /> <span className="whitespace-nowrap">from demo file</span>
                   </span>
                 ) : null}
               </th>
-              <td className={`px-2 py-2 text-right font-mono break-all ${i ? "border-t border-rule" : ""}`}>{r.value}</td>
+              {r.stack ? null : (
+                <td className={`px-2 py-2 text-right font-mono whitespace-nowrap ${i ? "border-t border-rule" : ""}`}>
+                  {r.value}
+                </td>
+              )}
               <td className={`py-2 pr-2 text-right ${i ? "border-t border-rule" : ""}`}>
                 <button
                   type="button"
@@ -884,10 +900,7 @@ function CheckStep({
       <p className="sr-only" aria-live="polite">
         {busy ? "Saving…" : ""}
       </p>
-      <div className="md:hidden">
-        <ActionBar note={note}>{actions}</ActionBar>
-      </div>
-      <div className="mt-6 hidden gap-2 md:grid">
+      <div className="mt-6 grid gap-2">
         {actions}
         {note}
       </div>

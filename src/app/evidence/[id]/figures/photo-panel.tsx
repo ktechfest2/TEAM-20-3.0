@@ -5,8 +5,8 @@ import { Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, ExternalLink } from "lucide-re
 import { OriginalPhoto } from "@/components/evidence/original-photo";
 
 /**
- * Photo kept in view while typing. Sticky under the header on phones (short, so the focused
- * input stays visible with the keyboard open); full-height sticky column on wide screens.
+ * Photo kept in view while typing. The caller makes the wrapper sticky. Height uses dvh so it
+ * shrinks with the on-screen keyboard and the focused input stays visible; full height on wide screens.
  * Page pinch-zoom is never disabled; these buttons are an extra, not a replacement.
  */
 export function PhotoPanel({ src, synthetic, code }: { src: string; synthetic: boolean; code: string }) {
@@ -15,7 +15,7 @@ export function PhotoPanel({ src, synthetic, code }: { src: string; synthetic: b
   const max = () => (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches ? 4 : 3);
 
   return (
-    <div className="sticky top-0 z-10 -mx-4 bg-canvas px-4 pt-2 pb-2 lg:top-4 lg:mx-0 lg:px-0">
+    <div className="pt-2 pb-2">
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -39,7 +39,7 @@ export function PhotoPanel({ src, synthetic, code }: { src: string; synthetic: b
       {hidden ? null : (
         <div className="relative">
           <div
-            className="h-[clamp(160px,32svh,280px)] overflow-auto rounded-lg border border-rule bg-sunken lg:h-[calc(100dvh-7rem)]"
+            className="h-[clamp(120px,28dvh,240px)] overflow-auto rounded-lg border border-rule bg-sunken lg:h-[calc(100dvh-7rem)]"
             style={{ touchAction: "pan-x pan-y pinch-zoom" }}
             tabIndex={0}
             role="region"

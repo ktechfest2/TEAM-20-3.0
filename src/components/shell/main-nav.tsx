@@ -83,12 +83,15 @@ function NavTabs({ pathname }: { pathname: string }) {
               >
                 {t.label}
                 {n !== null && n > 0 ? (
-                  <span
-                    className="inline-flex min-w-6 items-center justify-center rounded-full bg-ink px-1.5 font-mono text-xs font-semibold text-surface"
-                    aria-label={`${n} waiting`}
-                  >
-                    {n}
-                  </span>
+                  <>
+                    <span
+                      aria-hidden
+                      className="inline-flex min-w-6 items-center justify-center rounded-full bg-ink px-1.5 font-mono text-xs font-semibold text-surface"
+                    >
+                      {n}
+                    </span>
+                    <span className="sr-only">, {n} waiting</span>
+                  </>
                 ) : null}
               </Link>
             </li>

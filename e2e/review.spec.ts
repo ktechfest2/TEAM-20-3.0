@@ -6,21 +6,49 @@ import path from "node:path";
  * Figures + review slice, all synthetic demo data:
  * capture → upload → ProofTrail → DEMO_FIXTURE figures → human correction → confirm →
  * (new browser) demo reviewer A → queue → accept with reason → decision on the ProofTrail.
- * Set POLLTRACE_SHOTS_DIR to also save 360px and 1280px screenshots of each screen.
+ * Set POLLTRACE_SHOTS_DIR to also save screenshots (figures steps at 360/390/768/1280 + 360x400).
  */
 
 const PHOTO = path.join(__dirname, "synthetic-result-sheet.png");
 const SHOTS = process.env.POLLTRACE_SHOTS_DIR;
 
-async function shot(page: Page, name: string) {
+const SIZES = [
+  { width: 360, height: 740 },
+  { width: 390, height: 844 },
+  { width: 768, height: 1024 },
+  { width: 1280, height: 900 },
+];
+
+/** Full-page shot at each width plus a viewport-only shot at 360x740 (shows sticky elements in place). */
+async function shot(page: Page, name: string, sizes = [SIZES[0], SIZES[3]]) {
   if (!SHOTS) return;
   mkdirSync(SHOTS, { recursive: true });
   const original = page.viewportSize();
-  for (const width of [360, 1280]) {
-    await page.setViewportSize({ width, height: width === 360 ? 740 : 900 });
-    await page.waitForTimeout(150);
-    await page.screenshot({ path: path.join(SHOTS, `${name}-${width}.png`), fullPage: true });
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(SHOTS, `${name}-${size.width}x${size.height}.png`), fullPage: true });
   }
+  if (original) await page.setViewportSize(original);
+}
+
+/**
+ * Keyboard-open simulation (visible area ~360x400): with Party C focused, the photo panel and the
+ * focused field must both be in view. Asserted always; screenshots only with POLLTRACE_SHOTS_DIR.
+ */
+async function assertPhotoAndFieldVisible(page: Page, label: string, file?: string) {
+  const original = page.viewportSize();
+  await page.setViewportSize({ width: 360, height: 400 });
+  const field = page.getByLabel(label, { exact: true });
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await field.focus();
+  await page.waitForTimeout(200);
+  const photo = page.getByRole("region", { name: /Original photo for/ });
+  await expect(photo).toBeInViewport({ ratio: 0.9 });
+  await expect(field).toBeInViewport({ ratio: 1 });
+  const [p, f] = await Promise.all([photo.boundingBox(), field.boundingBox()]);
+  expect(p && f && f.y >= p.y + p.height).toBeTruthy(); // field is below the photo, not under it
+  if (SHOTS && file) await page.screenshot({ path: path.join(SHOTS, file) });
   if (original) await page.setViewportSize(original);
 }
 
@@ -62,7 +90,11 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   await page.getByRole("link", { name: "Read the figures" }).click();
   await expect(page.getByRole("heading", { name: "Enter the figures" })).toBeVisible();
   await expect(page.getByText("Automatic reading is not available in this version.")).toBeVisible();
-  await shot(page, "figures-mode");
+  await shot(page, "figures-mode", SIZES);
+  if (SHOTS) {
+    await page.setViewportSize(SIZES[0]);
+    await page.screenshot({ path: path.join(SHOTS, "figures-mode-360x740-viewport.png") });
+  }
   await page.getByRole("radio", { name: /Load demo figures/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
 
@@ -77,18 +109,31 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   // Typing survives a refresh (local draft).
   await page.reload();
   await expect(page.getByLabel("Party B", { exact: true })).toHaveValue(corrected, { timeout: 20_000 });
-  await shot(page, "figures-enter");
+  await shot(page, "figures-enter", SIZES);
+  await assertPhotoAndFieldVisible(page, "Party C", "figures-enter-360x400-partyC-focused.png");
+  if (SHOTS) {
+    // Sticky check at a normal phone height: scrolled down to the totals, photo still on top.
+    await page.setViewportSize(SIZES[0]);
+    await page.getByLabel("Total valid votes", { exact: true }).focus();
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(SHOTS, "figures-enter-360x740-scrolled.png") });
+  }
 
   await page.getByRole("button", { name: "Check before confirming" }).click();
   await expect(page.getByRole("heading", { name: "Check before you confirm" })).toBeVisible();
   await expect(page.getByRole("row", { name: new RegExp(`Party B.*${corrected}`) })).toBeVisible();
-  await shot(page, "figures-check");
+  await shot(page, "figures-check", SIZES);
+  if (SHOTS) {
+    await page.setViewportSize(SIZES[0]);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: path.join(SHOTS, "figures-check-360x740-viewport.png") });
+  }
   await page.getByRole("button", { name: "Confirm figures" }).click();
 
   // ---- Back on the ProofTrail: a new human-confirmed version, earlier one kept.
   await page.waitForURL(new RegExp(`/evidence/${id}\\?confirmed=2`));
   await expect(page.getByText(/Figures confirmed and saved as version/)).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("Checked and confirmed by a person").first()).toBeVisible();
+  await expect(page.getByText("Confirmed by sender").first()).toBeVisible();
   await expect(page.locator("#v1")).toBeVisible();
   await expect(page.locator("#v2")).toContainText("Changed from version 1");
   await expect(page.locator("#v2")).toContainText(`Party B: was ${demoValue}`);

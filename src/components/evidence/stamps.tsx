@@ -34,7 +34,7 @@ export function EvidenceStatusStamp({ status }: { status: EvidenceStatus }) {
 export function OriginStamp({ origin, small = false }: { origin: RevisionOrigin; small?: boolean }) {
   switch (origin) {
     case "HUMAN_CORRECTION":
-      return <Stamp small={small} label="Checked and confirmed by a person" icon={UserCheck} tone="progress" />;
+      return <Stamp small={small} label="Confirmed by sender" icon={UserCheck} tone="progress" />;
     case "MANUAL":
       return <Stamp small={small} label="Typed in, not confirmed yet" icon={Keyboard} tone="outline" />;
     case "DEMO_FIXTURE":

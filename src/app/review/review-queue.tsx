@@ -198,7 +198,7 @@ function FiguresCell({ item }: { item: ReviewQueueItem }) {
       </span>
     );
   }
-  return <Stamp small label="Figures confirmed by sender" icon={CircleCheck} tone="progress" />;
+  return <Stamp small label="Confirmed by sender" icon={CircleCheck} tone="progress" />;
 }
 
 function CopiesCell({ item, fallback }: { item: ReviewQueueItem; fallback?: string }) {
