@@ -211,6 +211,8 @@ export const EvidenceTrace = z.object({
     canReview: z.boolean(),
     /** Why review is not possible, e.g. "You submitted this evidence." */
     reviewBlockedReason: z.string().nullable(),
+    /** Extraction modes that can run for this evidence now (same rule as /extract). */
+    availableExtractionModes: z.array(ExtractionMode),
   }),
   /** URL of the original bytes for this viewer (private, no-store). */
   originalUrl: z.string(),
