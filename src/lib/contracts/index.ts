@@ -112,9 +112,12 @@ export const UploadInitResponse = z.discriminatedUnion("state", [
     state: z.literal("UPLOAD_REQUIRED"),
     /** Absolute or same-origin URL; client PUTs the raw original bytes to it. */
     uploadUrl: z.string().min(1),
-    /** Extra headers the client must send with the PUT (e.g. content-type). */
+    /** Extra headers the client must send with the PUT (e.g. content-type). Send nothing else. */
     uploadHeaders: z.record(z.string(), z.string()),
     expiresAt: z.iso.datetime(),
+    /** Server-signed, tamper-proof upload intent; echoed back unchanged at finalize. */
+    intentToken: z.string().min(1).max(4096),
+    storageMode: z.enum(["LOCAL_DEV", "SUPABASE"]),
   }),
   z.object({
     state: z.literal("ALREADY_RECEIVED"),
@@ -124,7 +127,10 @@ export const UploadInitResponse = z.discriminatedUnion("state", [
 export type UploadInitResponse = z.infer<typeof UploadInitResponse>;
 
 /** Step 3: POST /api/evidence/uploads/finalize — server re-hashes the staged object. */
-export const UploadFinalizeRequest = z.object({ clientSubmissionId: z.uuid() });
+export const UploadFinalizeRequest = z.object({
+  clientSubmissionId: z.uuid(),
+  intentToken: z.string().min(1).max(4096),
+});
 export type UploadFinalizeRequest = z.infer<typeof UploadFinalizeRequest>;
 
 export const EvidenceReceipt = z.object({

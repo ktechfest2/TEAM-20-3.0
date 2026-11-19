@@ -1,10 +1,14 @@
 "use client";
 /**
- * Retry-safe upload of locally saved originals. The clientSubmissionId (capture.id) is the
- * idempotency key and is never regenerated, so repeating an upload cannot create a second record.
- * A capture becomes RECEIVED only when the server returns a receipt whose sha256 equals ours.
+ * Retry-safe upload of locally saved originals, direct to storage:
+ *   1. POST /api/evidence/uploads           → signed upload target + intentToken (or existing receipt)
+ *   2. PUT  <uploadUrl>                      → raw original bytes straight to private staging
+ *   3. POST /api/evidence/uploads/finalize   → server re-hashes the staged bytes, records evidence
+ * The clientSubmissionId (capture.id) is the idempotency key and is never regenerated, so
+ * repeating any step cannot create a second record. A capture becomes RECEIVED only when the
+ * server returns a receipt whose sha256 equals ours.
  */
-import { EvidenceReceipt } from "@/lib/contracts";
+import { EvidenceReceipt, UploadInitResponse } from "@/lib/contracts";
 import { getDB, type LocalCapture, type PollTraceDB } from "./db";
 
 export type AttentionReason =
@@ -16,6 +20,12 @@ export type AttentionReason =
   | "REJECTED_FILE";
 
 export const MAX_AUTO_ATTEMPTS = 3;
+const UPLOAD_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+type Outcome =
+  | { kind: "received"; receipt: EvidenceReceipt }
+  | { kind: "attention"; reason: AttentionReason }
+  | { kind: "transient" };
 
 const inFlight = new Set<string>();
 
@@ -28,16 +38,82 @@ async function ensureSession(): Promise<boolean> {
   }
 }
 
-async function post(c: LocalCapture): Promise<Response> {
-  const form = new FormData();
-  form.set("file", c.blob, c.fileName || "original");
-  form.set("electionId", c.electionId);
-  form.set("pollingUnitId", c.pollingUnitId);
-  form.set("clientSubmissionId", c.id);
-  form.set("originalSha256", c.sha256);
-  form.set("capturedAtClaimed", c.capturedAt);
-  form.set("sourceType", c.sourceType ?? "WITNESS_PHOTO");
-  return fetch("/api/evidence", { method: "POST", body: form, credentials: "same-origin" });
+/** JSON POST to our API; on 401 obtain a session once and retry. Throws on network failure. */
+async function apiPost(path: string, body: unknown): Promise<Response> {
+  const send = () =>
+    fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  let res = await send();
+  if (res.status === 401 && (await ensureSession())) res = await send();
+  return res;
+}
+
+async function errorCode(res: Response): Promise<string | undefined> {
+  const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
+  return body?.error?.code;
+}
+
+function classify(status: number): Outcome {
+  if (status === 401 || status === 403) return { kind: "attention", reason: "UNAUTHORIZED" };
+  if (status === 422) return { kind: "attention", reason: "HASH_MISMATCH" };
+  if (status === 400 || status === 413 || status === 415) return { kind: "attention", reason: "REJECTED_FILE" };
+  return { kind: "transient" }; // 404/410/429/5xx etc: start again from init next time
+}
+
+function toReceipt(json: unknown, c: LocalCapture): Outcome {
+  const parsed = EvidenceReceipt.safeParse(json);
+  if (!parsed.success) return { kind: "transient" };
+  if (parsed.data.sha256 !== c.sha256) return { kind: "attention", reason: "HASH_MISMATCH" };
+  return { kind: "received", receipt: parsed.data };
+}
+
+async function directUpload(c: LocalCapture): Promise<Outcome> {
+  if (!UPLOAD_MIME.has(c.mime)) return { kind: "attention", reason: "REJECTED_FILE" };
+
+  // 1. init
+  const init = await apiPost("/api/evidence/uploads", {
+    electionId: c.electionId,
+    pollingUnitId: c.pollingUnitId,
+    clientSubmissionId: c.id,
+    originalSha256: c.sha256,
+    sizeBytes: c.sizeBytes,
+    mime: c.mime,
+    sourceType: c.sourceType ?? "WITNESS_PHOTO",
+    capturedAtClaimed: c.capturedAt,
+  });
+  if (init.status === 409) return { kind: "attention", reason: "CONFLICT" };
+  if (!init.ok) return classify(init.status);
+  const parsed = UploadInitResponse.safeParse(await init.json().catch(() => null));
+  if (!parsed.success) return { kind: "transient" };
+  if (parsed.data.state === "ALREADY_RECEIVED") return toReceipt(parsed.data.receipt, c);
+  const target = parsed.data;
+
+  // 2. PUT original bytes straight to staging. Send exactly the given headers, no cookies.
+  const put = await fetch(target.uploadUrl, {
+    method: "PUT",
+    headers: target.uploadHeaders,
+    body: c.blob,
+    credentials: "omit",
+  });
+  if (put.status === 413) return { kind: "attention", reason: "REJECTED_FILE" };
+  if (!put.ok) return { kind: "transient" };
+
+  // 3. finalize: server re-hashes the staged bytes.
+  const fin = await apiPost("/api/evidence/uploads/finalize", {
+    clientSubmissionId: c.id,
+    intentToken: target.intentToken,
+  });
+  if (fin.ok) return toReceipt(await fin.json().catch(() => null), c);
+  if (fin.status === 409) {
+    return (await errorCode(fin)) === "CLIENT_SUBMISSION_CONFLICT"
+      ? { kind: "attention", reason: "CONFLICT" }
+      : { kind: "transient" }; // UPLOAD_INCOMPLETE: PUT again next attempt
+  }
+  return classify(fin.status);
 }
 
 /** On app start: an UPLOADING row means the tab died mid-upload. Retrying is safe. */
@@ -54,48 +130,30 @@ export async function uploadCapture(id: string, db: PollTraceDB = getDB()): Prom
     const attempts = c.attempts + 1;
     await db.captures.update(id, { status: "UPLOADING", attempts });
 
-    const fail = (reason: AttentionReason) =>
-      db.captures.update(id, { status: "NEEDS_ATTENTION", lastError: reason });
-    const transient = () =>
-      attempts >= MAX_AUTO_ATTEMPTS
-        ? fail("NETWORK")
-        : db.captures.update(id, { status: "SAVED_LOCAL", lastError: "NETWORK" });
-
     // Make sure the original bytes are still readable before sending.
     try {
       await c.blob.slice(0, 1).arrayBuffer();
     } catch {
-      await fail("UNREADABLE");
+      await db.captures.update(id, { status: "NEEDS_ATTENTION", lastError: "UNREADABLE" });
       return;
     }
 
-    let res: Response;
+    let outcome: Outcome;
     try {
-      res = await post(c);
-      if (res.status === 401 && (await ensureSession())) res = await post(c);
+      outcome = await directUpload(c);
     } catch {
-      await transient();
-      return;
+      outcome = { kind: "transient" }; // network dropped somewhere in the 3 steps
     }
 
-    if (res.ok) {
-      const parsed = EvidenceReceipt.safeParse(await res.json().catch(() => null));
-      if (!parsed.success) {
-        await transient();
-        return;
-      }
-      if (parsed.data.sha256 !== c.sha256) {
-        await fail("HASH_MISMATCH");
-        return;
-      }
-      await db.captures.update(id, { status: "RECEIVED", lastError: null, serverReceipt: parsed.data });
-      return;
+    if (outcome.kind === "received") {
+      await db.captures.update(id, { status: "RECEIVED", lastError: null, serverReceipt: outcome.receipt });
+    } else if (outcome.kind === "attention") {
+      await db.captures.update(id, { status: "NEEDS_ATTENTION", lastError: outcome.reason });
+    } else if (attempts >= MAX_AUTO_ATTEMPTS) {
+      await db.captures.update(id, { status: "NEEDS_ATTENTION", lastError: "NETWORK" });
+    } else {
+      await db.captures.update(id, { status: "SAVED_LOCAL", lastError: "NETWORK" });
     }
-    if (res.status === 401 || res.status === 403) await fail("UNAUTHORIZED");
-    else if (res.status === 409) await fail("CONFLICT");
-    else if (res.status === 422) await fail("HASH_MISMATCH");
-    else if (res.status === 400 || res.status === 413 || res.status === 415) await fail("REJECTED_FILE");
-    else await transient();
   } finally {
     inFlight.delete(id);
   }
