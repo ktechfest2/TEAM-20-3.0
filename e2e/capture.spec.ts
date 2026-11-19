@@ -21,8 +21,13 @@ test("capture → local receipt survives refresh → uploads exactly once", asyn
   await page.locator('input[type="file"]:not([capture])').setInputFiles(PHOTO);
   await expect(page.getByRole("heading", { name: "Check your photo" })).toBeVisible();
 
+  // Role is required: saving without it shows an inline prompt, nothing is stored.
+  await page.getByRole("button", { name: "Save this photo" }).click();
+  await expect(page.getByText("Choose one to save the photo.")).toBeVisible();
+  await page.getByRole("radio", { name: "A voter or witness at this polling unit" }).check();
+
   // Server unreachable: the capture must still be saved locally.
-  await page.route("**/api/evidence", (route) => route.abort("internetdisconnected"));
+  await page.route("**/api/evidence**", (route) => route.abort("internetdisconnected"));
   await page.getByRole("button", { name: "Save this photo" }).click();
 
   await expect(page.getByRole("heading", { name: "Saved on this device" })).toBeVisible();
@@ -44,7 +49,7 @@ test("capture → local receipt survives refresh → uploads exactly once", asyn
 
   // Server reachable again: re-opening the app retries automatically with the same
   // clientSubmissionId; the server re-hashes and acknowledges.
-  await page.unroute("**/api/evidence");
+  await page.unroute("**/api/evidence**");
   await page.goto(receiptUrl);
   await expect(page.getByRole("heading", { name: "Received by server" })).toBeVisible();
   await expect(page.getByText("Source integrity confirmed.")).toBeVisible();

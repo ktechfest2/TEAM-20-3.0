@@ -6,7 +6,13 @@ import { MAX_AUTO_ATTEMPTS, recoverInterruptedUploads, syncAll, uploadCapture } 
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const blob = () => new Blob([PNG], { type: "image/png" });
-const input = { fileName: "sheet.png", electionId: "demo-election", pollingUnitId: "demo-pu-012", synthetic: true };
+const input = {
+  fileName: "sheet.png",
+  electionId: "demo-election",
+  pollingUnitId: "demo-pu-012",
+  sourceType: "OBSERVER_PHOTO" as const,
+  synthetic: true,
+};
 
 let db: PollTraceDB;
 beforeEach(() => {
@@ -65,6 +71,7 @@ describe("sync", () => {
     const form = fetchMock.mock.calls[0][1]?.body as FormData;
     expect(form.get("clientSubmissionId")).toBe(rec.id);
     expect(form.get("originalSha256")).toBe(rec.sha256);
+    expect(form.get("sourceType")).toBe("OBSERVER_PHOTO");
   });
 
   it("flags a server receipt with a different hash instead of accepting it", async () => {

@@ -79,15 +79,53 @@ export const PollingUnit = z.object({
 });
 export type PollingUnit = z.infer<typeof PollingUnit>;
 
-/** Metadata accompanying POST /api/evidence (multipart; file sent separately). */
+/**
+ * Metadata for an evidence upload. `sourceType` is the capturer's own claim about their role
+ * (voter/witness vs accredited observer/agent); it is never treated as verified identity.
+ * Optional with WITNESS_PHOTO default so captures queued before this field existed still sync.
+ */
 export const EvidenceUploadMeta = z.object({
   electionId: z.string().min(1),
   pollingUnitId: z.string().min(1),
   clientSubmissionId: z.uuid(),
   originalSha256: Sha256Hex,
   capturedAtClaimed: z.iso.datetime().optional(),
+  sourceType: EvidenceSource.default("WITNESS_PHOTO"),
 });
 export type EvidenceUploadMeta = z.infer<typeof EvidenceUploadMeta>;
+
+/**
+ * Direct-to-storage upload, step 1: POST /api/evidence/uploads (JSON).
+ * The server checks auth, metadata and idempotency, then issues a short-lived signed upload
+ * target for a staging key only it can promote. Original bytes never pass through the app server
+ * on the way in (avoids the serverless request-body limit).
+ */
+export const UploadInitRequest = EvidenceUploadMeta.extend({
+  sizeBytes: z.number().int().positive(),
+  mime: z.enum(["image/jpeg", "image/png", "image/webp"]),
+});
+export type UploadInitRequest = z.infer<typeof UploadInitRequest>;
+
+/** Either an upload target, or the existing receipt when this submission was already received. */
+export const UploadInitResponse = z.discriminatedUnion("state", [
+  z.object({
+    state: z.literal("UPLOAD_REQUIRED"),
+    /** Absolute or same-origin URL; client PUTs the raw original bytes to it. */
+    uploadUrl: z.string().min(1),
+    /** Extra headers the client must send with the PUT (e.g. content-type). */
+    uploadHeaders: z.record(z.string(), z.string()),
+    expiresAt: z.iso.datetime(),
+  }),
+  z.object({
+    state: z.literal("ALREADY_RECEIVED"),
+    receipt: z.lazy(() => EvidenceReceipt),
+  }),
+]);
+export type UploadInitResponse = z.infer<typeof UploadInitResponse>;
+
+/** Step 3: POST /api/evidence/uploads/finalize — server re-hashes the staged object. */
+export const UploadFinalizeRequest = z.object({ clientSubmissionId: z.uuid() });
+export type UploadFinalizeRequest = z.infer<typeof UploadFinalizeRequest>;
 
 export const EvidenceReceipt = z.object({
   id: z.string(),

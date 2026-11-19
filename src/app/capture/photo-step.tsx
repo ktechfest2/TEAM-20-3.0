@@ -6,9 +6,24 @@ import { ActionBar } from "@/components/action-bar";
 import { DemoTag } from "@/components/demo-band";
 import { ELECTIONS } from "@/lib/seed/registry";
 import { StorageFullError, saveCapture } from "@/lib/offline/db";
-import { MAX_ORIGINAL_BYTES, type PollingUnit } from "@/lib/contracts";
+import { MAX_ORIGINAL_BYTES, type EvidenceSource, type PollingUnit } from "@/lib/contracts";
 
 type SaveError = "STORAGE_FULL" | "STORAGE_UNAVAILABLE" | "NO_CRYPTO" | "HASH_FAILED" | null;
+
+const ROLE_KEY = "polltrace.lastSourceType";
+const ROLES: Array<{ value: EvidenceSource; label: string }> = [
+  { value: "WITNESS_PHOTO", label: "A voter or witness at this polling unit" },
+  { value: "OBSERVER_PHOTO", label: "An accredited observer or party agent" },
+];
+
+function rememberedRole(): EvidenceSource | null {
+  try {
+    const v = localStorage.getItem(ROLE_KEY);
+    return v === "WITNESS_PHOTO" || v === "OBSERVER_PHOTO" ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 const fmtMB = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
 const fmtTime = (d: Date) =>
@@ -29,9 +44,13 @@ export function PhotoStep({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<SaveError>(null);
   const [lowStorage, setLowStorage] = useState(false);
+  const [role, setRole] = useState<EvidenceSource | null>(null);
+  const [roleMissing, setRoleMissing] = useState(false);
   const cameraId = useId();
   const galleryId = useId();
+  const roleHintId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const roleRef = useRef<HTMLFieldSetElement>(null);
 
   // Revoke the preview URL when it is replaced or the step unmounts.
   useEffect(() => {
@@ -52,6 +71,7 @@ export function PhotoStep({
     setError(null);
     setFile(f);
     setPreview(URL.createObjectURL(f));
+    setRole((r) => r ?? rememberedRole());
     navigator.storage
       ?.estimate?.()
       .then(({ quota, usage }) => {
@@ -62,6 +82,11 @@ export function PhotoStep({
 
   async function save() {
     if (!file) return;
+    if (!role) {
+      setRoleMissing(true);
+      roleRef.current?.querySelector("input")?.focus();
+      return;
+    }
     if (!globalThis.crypto?.subtle) {
       setError("NO_CRYPTO");
       return;
@@ -75,8 +100,14 @@ export function PhotoStep({
         fileName: file.name,
         electionId: election.id,
         pollingUnitId: unit.id,
+        sourceType: role,
         synthetic: unit.synthetic || election.synthetic,
       });
+      try {
+        localStorage.setItem(ROLE_KEY, role);
+      } catch {
+        /* convenience only */
+      }
       onSaved(rec.id);
     } catch (e) {
       if (e instanceof StorageFullError) setError("STORAGE_FULL");
@@ -180,6 +211,35 @@ export function PhotoStep({
           will still be saved on this device.
         </p>
       ) : null}
+      <fieldset ref={roleRef} className="mt-6" aria-describedby={roleHintId}>
+        <legend className="font-bold">You are taking this photo as:</legend>
+        <p id={roleHintId} className="text-sm text-ink-muted">
+          This is what you tell us. PollTrace does not check who you are.
+        </p>
+        {roleMissing && !role ? (
+          <p role="alert" className="mt-2 font-bold text-caution">
+            Choose one to save the photo.
+          </p>
+        ) : null}
+        <div className={`slip mt-2 ${roleMissing && !role ? "border-2 border-caution" : ""}`}>
+          {ROLES.map((r) => (
+            <label
+              key={r.value}
+              className="flex min-h-14 cursor-pointer items-center gap-3 px-4 py-3 has-[:checked]:bg-primary-tint"
+            >
+              <input
+                type="radio"
+                name="source-type"
+                value={r.value}
+                checked={role === r.value}
+                onChange={() => setRole(r.value)}
+                className="size-5 shrink-0 accent-primary"
+              />
+              <span>{r.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {lowStorage ? (
         <p className="mt-3 rounded-md border-2 border-caution bg-caution-tint p-3 text-sm text-caution">
           Your phone is almost full. Saving may fail.

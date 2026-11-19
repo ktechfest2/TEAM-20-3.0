@@ -96,6 +96,10 @@ export function ReceiptStep({ captureId }: { captureId: string }) {
             {unit?.name} {capture.synthetic ? <DemoTag /> : null}
           </span>
         </Segment>
+        <Segment label="Taken as">
+          {capture.sourceType === "OBSERVER_PHOTO" ? "Accredited observer or party agent" : "Voter or witness"}{" "}
+          <span className="text-sm text-ink-muted">(your own statement, not checked)</span>
+        </Segment>
         <Segment label="Photo fingerprint (SHA-256)">
           <span className="font-mono text-lg">{shortFingerprint(sha)}</span>
           {integrityConfirmed ? (

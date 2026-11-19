@@ -36,6 +36,7 @@ async function post(c: LocalCapture): Promise<Response> {
   form.set("clientSubmissionId", c.id);
   form.set("originalSha256", c.sha256);
   form.set("capturedAtClaimed", c.capturedAt);
+  form.set("sourceType", c.sourceType ?? "WITNESS_PHOTO");
   return fetch("/api/evidence", { method: "POST", body: form, credentials: "same-origin" });
 }
 

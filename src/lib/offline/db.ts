@@ -4,7 +4,7 @@
  * clientSubmissionId are committed and read back. Nothing here implies server receipt.
  */
 import Dexie, { type EntityTable } from "dexie";
-import type { EvidenceReceipt } from "@/lib/contracts";
+import type { EvidenceReceipt, EvidenceSource } from "@/lib/contracts";
 import { sha256Hex } from "./hash";
 
 export type CaptureStatus = "SAVED_LOCAL" | "UPLOADING" | "RECEIVED" | "NEEDS_ATTENTION";
@@ -19,6 +19,8 @@ export interface LocalCapture {
   fileName: string;
   electionId: string;
   pollingUnitId: string;
+  /** Capturer's own claim about their role. Absent on captures saved before this existed. */
+  sourceType?: EvidenceSource;
   /** When the device stored the photo (ISO, phone clock). A claim, not proof of time taken. */
   capturedAt: string;
   status: CaptureStatus;
@@ -60,6 +62,7 @@ export interface SaveCaptureInput {
   fileName: string;
   electionId: string;
   pollingUnitId: string;
+  sourceType: EvidenceSource;
   synthetic: boolean;
 }
 
@@ -75,6 +78,7 @@ export async function saveCapture(input: SaveCaptureInput, db: PollTraceDB = get
     fileName: input.fileName,
     electionId: input.electionId,
     pollingUnitId: input.pollingUnitId,
+    sourceType: input.sourceType,
     capturedAt: new Date().toISOString(),
     status: "SAVED_LOCAL",
     attempts: 0,
