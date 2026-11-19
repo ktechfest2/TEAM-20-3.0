@@ -16,7 +16,7 @@ import type {
   ObjectStore,
   PutResult,
 } from "./types";
-import { ImmutableObjectConflictError } from "./types";
+import { assertStagingKey, ImmutableObjectConflictError } from "./types";
 
 export const EVIDENCE_BUCKET = "evidence-originals";
 const UNIQUE_VIOLATION = "23505";
@@ -172,6 +172,32 @@ class SupabaseObjectStore implements ObjectStore {
     const { data, error } = await this.db.storage.from(EVIDENCE_BUCKET).download(key);
     if (error || !data) return null;
     return new Uint8Array(await data.arrayBuffer());
+  }
+
+  async putStaging(key: string, bytes: Uint8Array, mime: string): Promise<void> {
+    assertStagingKey(key);
+    const { error } = await this.db.storage
+      .from(EVIDENCE_BUCKET)
+      .upload(key, bytes, { contentType: mime, upsert: true, cacheControl: "private, max-age=0" });
+    if (error) throw new Error(`staging upload failed: ${error.message}`);
+  }
+
+  async removeStaging(key: string): Promise<void> {
+    assertStagingKey(key);
+    const { error } = await this.db.storage.from(EVIDENCE_BUCKET).remove([key]);
+    if (error) throw new Error(`staging remove failed: ${error.message}`);
+  }
+
+  /**
+   * Signed upload URL for the staging key only. upsert:true so a re-issued target works when a
+   * previous attempt left bytes there. Supabase fixes the URL lifetime (2h); our own intent
+   * token expiry is what finalize enforces. The PUT needs no API key: the token authorises it.
+   */
+  async createStagingUploadTarget(key: string, mime: string) {
+    assertStagingKey(key);
+    const { data, error } = await this.db.storage.from(EVIDENCE_BUCKET).createSignedUploadUrl(key, { upsert: true });
+    if (error || !data) throw new Error(`signed upload url failed: ${error?.message ?? "no data"}`);
+    return { url: data.signedUrl, headers: { "content-type": mime, "x-upsert": "true" } };
   }
 }
 

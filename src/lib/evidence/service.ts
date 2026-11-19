@@ -66,17 +66,11 @@ function replayOrConflict(existing: EvidenceRecord, sha256: string, mode: Storag
 }
 
 export async function submitEvidence(input: SubmitInput, deps: SubmitDeps): Promise<ServiceResult> {
-  const { storage, rateLimiter } = deps;
-  const now = deps.now ?? (() => new Date());
-  const newId = deps.newId ?? randomUUID;
-
   const p = input.principal;
   if (!p) return fail(401, "UNAUTHENTICATED", "A session is required. Call POST /api/session first.");
 
-  const retryAfter = rateLimiter.hit(`upload:${p.contributorId}`);
-  if (retryAfter > 0) {
-    return { ...fail(429, "RATE_LIMITED", "Too many uploads; retry later."), headers: { "Retry-After": String(retryAfter) } };
-  }
+  const limited = rateLimited(deps.rateLimiter, `upload:${p.contributorId}`);
+  if (limited) return limited;
 
   const parsed = EvidenceUploadMeta.safeParse({
     electionId: input.fields.electionId,
@@ -84,24 +78,63 @@ export async function submitEvidence(input: SubmitInput, deps: SubmitDeps): Prom
     clientSubmissionId: input.fields.clientSubmissionId,
     originalSha256: input.fields.originalSha256?.toLowerCase(),
     capturedAtClaimed: input.fields.capturedAtClaimed || undefined,
+    sourceType: input.fields.sourceType || undefined,
   });
-  if (!parsed.success) {
-    return fail(400, "INVALID_METADATA", "Upload metadata failed validation.", {
-      issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
-    });
-  }
-  const meta = parsed.data;
+  if (!parsed.success) return invalid("INVALID_METADATA", "Upload metadata failed validation.", parsed.error);
+
+  const registryError = checkRegistry(parsed.data.electionId, parsed.data.pollingUnitId);
+  if (registryError) return registryError;
+
+  return commitVerifiedEvidence(p, parsed.data, input.file, deps, "MULTIPART");
+}
+
+export function rateLimited(limiter: RateLimiter, key: string): ServiceResult | null {
+  const retryAfter = limiter.hit(key);
+  if (retryAfter <= 0) return null;
+  return { ...fail(429, "RATE_LIMITED", "Too many requests; retry later."), headers: { "Retry-After": String(retryAfter) } };
+}
+
+export function invalid(code: string, message: string, error: { issues: Array<{ path: PropertyKey[]; message: string }> }) {
+  return fail(400, code, message, {
+    issues: error.issues.map((i) => ({ path: i.path.map(String).join("."), message: i.message })),
+  });
+}
+
+export function checkRegistry(electionId: string, pollingUnitId: string): ServiceResult | null {
+  if (!findElection(electionId)) return fail(400, "UNKNOWN_ELECTION", "Unknown electionId.");
+  if (!findPollingUnit(pollingUnitId)) return fail(400, "UNKNOWN_POLLING_UNIT", "Unknown pollingUnitId.");
+  return null;
+}
+
+export const fileTooLarge = () =>
+  fail(413, "FILE_TOO_LARGE", `Original exceeds ${MAX_ORIGINAL_BYTES} bytes.`, { maxBytes: MAX_ORIGINAL_BYTES });
+
+export { fail, replayOrConflict, receiptOf };
+
+/**
+ * Shared final step for every upload path. `bytes` are the exact bytes the server holds
+ * in memory; they are verified here and the SAME buffer is written to the immutable key,
+ * so nothing can change between check and store.
+ * size -> signature -> server hash vs claim -> idempotency -> write-once object -> row -> audit.
+ */
+export async function commitVerifiedEvidence(
+  p: Principal,
+  meta: EvidenceUploadMeta,
+  bytes: Uint8Array | null,
+  deps: SubmitDeps,
+  uploadPath: "MULTIPART" | "DIRECT_STAGED",
+  extraAudit: Record<string, unknown> = {},
+): Promise<ServiceResult> {
+  const { storage } = deps;
+  const now = deps.now ?? (() => new Date());
+  const newId = deps.newId ?? randomUUID;
 
   const election = findElection(meta.electionId);
-  if (!election) return fail(400, "UNKNOWN_ELECTION", "Unknown electionId.");
   const unit = findPollingUnit(meta.pollingUnitId);
-  if (!unit) return fail(400, "UNKNOWN_POLLING_UNIT", "Unknown pollingUnitId.");
+  if (!election || !unit) return checkRegistry(meta.electionId, meta.pollingUnitId)!;
 
-  const bytes = input.file;
-  if (!bytes || bytes.byteLength === 0) return fail(400, "MISSING_FILE", "A non-empty 'file' part is required.");
-  if (bytes.byteLength > MAX_ORIGINAL_BYTES) {
-    return fail(413, "FILE_TOO_LARGE", `Original exceeds ${MAX_ORIGINAL_BYTES} bytes.`, { maxBytes: MAX_ORIGINAL_BYTES });
-  }
+  if (!bytes || bytes.byteLength === 0) return fail(400, "MISSING_FILE", "A non-empty file is required.");
+  if (bytes.byteLength > MAX_ORIGINAL_BYTES) return fileTooLarge();
 
   const mime = detectImageMime(bytes);
   if (!mime) {
@@ -119,7 +152,8 @@ export async function submitEvidence(input: SubmitInput, deps: SubmitDeps): Prom
   const prior = await storage.repo.findEvidenceBySubmission(p.contributorId, meta.clientSubmissionId);
   if (prior) return replayOrConflict(prior, serverSha256, storage.mode);
 
-  // Key contains the hash, so a key can only ever hold these exact bytes.
+  // Key contains the hash, so a key can only ever hold these exact bytes. Clients are
+  // never issued write access to "originals/": only to their own "staging/" key.
   const originalPath = `originals/${p.contributorId}/${meta.clientSubmissionId}/${serverSha256}.${extensionFor(mime)}`;
   await storage.objects.putImmutable(originalPath, bytes, mime, serverSha256);
 
@@ -129,7 +163,7 @@ export async function submitEvidence(input: SubmitInput, deps: SubmitDeps): Prom
     contributorId: p.contributorId,
     electionId: election.id,
     pollingUnitId: unit.id,
-    sourceType: "WITNESS_PHOTO",
+    sourceType: meta.sourceType,
     originalPath,
     sha256: serverSha256,
     mime,
@@ -154,9 +188,12 @@ export async function submitEvidence(input: SubmitInput, deps: SubmitDeps): Prom
       clientSha256Matched: true,
       mime,
       sizeBytes: record.sizeBytes,
+      sourceType: record.sourceType,
       capturedAtClaimed: record.capturedAtClaimed,
       storageMode: storage.mode,
+      uploadPath,
       synthetic: record.synthetic,
+      ...extraAudit,
     },
     createdAt: record.receivedAt,
   });

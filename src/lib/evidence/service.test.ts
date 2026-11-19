@@ -195,6 +195,19 @@ describe("submitEvidence happy path and idempotency", () => {
     expect((a.body as { id: string }).id).not.toBe((b.body as { id: string }).id);
   });
 
+  it.each([
+    [undefined, "WITNESS_PHOTO"],
+    ["OBSERVER_PHOTO", "OBSERVER_PHOTO"],
+  ] as const)("multipart sourceType %s -> stored %s", async (field, stored) => {
+    const res = await submitEvidence(input(JPEG, { sourceType: field }), deps());
+    expect(res.status).toBe(201);
+    expect(Object.values((await db()).evidence)[0]).toMatchObject({ sourceType: stored });
+  });
+
+  it("multipart invalid sourceType -> 400", async () => {
+    expect((await submitEvidence(input(JPEG, { sourceType: "RUMOUR" }), deps())).status).toBe(400);
+  });
+
   it("ignores client MIME: detection is by signature only", () => {
     expect(detectImageMime(PNG)).toBe("image/png");
     expect(detectImageMime(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x41, 0x56, 0x49, 0x20]))).toBeNull(); // RIFF AVI

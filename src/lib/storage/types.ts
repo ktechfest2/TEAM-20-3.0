@@ -73,6 +73,26 @@ export interface ObjectStore {
    */
   putImmutable(key: string, bytes: Uint8Array, mime: string, sha256: string): Promise<PutResult>;
   get(key: string): Promise<Uint8Array | null>;
+
+  /**
+   * STAGING ONLY (keys must start with "staging/"). Overwrite allowed: staged bytes are
+   * untrusted until finalize re-hashes them. Originals can never be written or removed here.
+   */
+  putStaging(key: string, bytes: Uint8Array, mime: string): Promise<void>;
+  /** Removes a staging object. Refuses any key outside "staging/". Missing key is not an error. */
+  removeStaging(key: string): Promise<void>;
+  /**
+   * Remote adapters return a direct signed upload target for a staging key (upsert allowed).
+   * LOCAL_DEV returns null: the service issues a same-origin signed PUT route instead.
+   */
+  createStagingUploadTarget(key: string, mime: string): Promise<{ url: string; headers: Record<string, string> } | null>;
+}
+
+export const STAGING_PREFIX = "staging/";
+export function assertStagingKey(key: string): void {
+  if (!key.startsWith(STAGING_PREFIX) || key.includes("..")) {
+    throw new Error(`Refusing non-staging key: ${key}`);
+  }
 }
 
 export interface EvidenceStorage {

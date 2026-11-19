@@ -7,7 +7,14 @@ import { getStorage } from "@/lib/storage";
 
 /** Multipart envelope overhead allowance on top of the image cap. */
 const MULTIPART_SLACK = 64 * 1024;
-const FIELDS = ["electionId", "pollingUnitId", "clientSubmissionId", "originalSha256", "capturedAtClaimed"] as const;
+const FIELDS = [
+  "electionId",
+  "pollingUnitId",
+  "clientSubmissionId",
+  "originalSha256",
+  "capturedAtClaimed",
+  "sourceType",
+] as const;
 
 export async function POST(request: Request): Promise<Response> {
   try {

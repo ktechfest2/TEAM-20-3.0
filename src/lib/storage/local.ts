@@ -6,7 +6,7 @@
  * not remote storage. Never claim LOCAL_DEV evidence is "stored in the cloud".
  */
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   AuditEventRecord,
@@ -18,7 +18,7 @@ import type {
   ObjectStore,
   PutResult,
 } from "./types";
-import { ImmutableObjectConflictError } from "./types";
+import { assertStagingKey, ImmutableObjectConflictError } from "./types";
 
 interface LocalDb {
   contributors: Record<string, ContributorRecord>;
@@ -153,6 +153,25 @@ class LocalObjectStore implements ObjectStore {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw err;
     }
+  }
+
+  async putStaging(key: string, bytes: Uint8Array): Promise<void> {
+    assertStagingKey(key);
+    const full = safeObjectPath(this.root, key);
+    await mkdir(path.dirname(full), { recursive: true, mode: 0o700 });
+    const tmp = `${full}.${process.pid}.${Date.now()}.tmp`;
+    await writeFile(tmp, bytes, { mode: 0o600 });
+    await rename(tmp, full);
+  }
+
+  async removeStaging(key: string): Promise<void> {
+    assertStagingKey(key);
+    await rm(safeObjectPath(this.root, key), { force: true });
+  }
+
+  async createStagingUploadTarget(key: string): Promise<null> {
+    assertStagingKey(key);
+    return null; // same-origin signed PUT route is issued by the service
   }
 }
 
