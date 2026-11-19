@@ -63,6 +63,8 @@ function ref(over: Partial<VerificationReferenceInput> = {}): VerificationRefere
     sourceDescription: "Synthetic demo reference (fictional)",
     sourceUrl: null,
     sourceVerified: true,
+    // Keep reviewState consistent with sourceVerified unless a test overrides it.
+    reviewState: over.sourceVerified === false ? "NOT_REVIEWED" : "CONFIRMED",
     synthetic: true,
     figures: { ...fixture.referenceResult },
     ...over,
