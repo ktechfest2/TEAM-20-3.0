@@ -1,7 +1,7 @@
 import { CircleCheck, RefreshCw, Smartphone, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { CaptureStatus } from "@/lib/offline/db";
 
-type Tone = "local" | "progress" | "done" | "attention" | "integrity";
+export type Tone = "local" | "progress" | "done" | "attention" | "integrity" | "outline" | "demo";
 
 const TONE: Record<Tone, string> = {
   local: "bg-sunken text-ink",
@@ -9,6 +9,9 @@ const TONE: Record<Tone, string> = {
   done: "bg-success-tint text-success",
   attention: "bg-caution-tint text-caution",
   integrity: "bg-conflict-tint text-conflict",
+  outline: "bg-surface text-ink",
+  // Synthetic data only: the one dashed border in the product.
+  demo: "border-dashed bg-demo-tint text-demo",
 };
 
 export const CAPTURE_STAMP: Record<CaptureStatus, { label: string; icon: LucideIcon; tone: Tone }> = {
@@ -23,15 +26,17 @@ export function Stamp({
   icon: Icon,
   tone,
   spinning = false,
+  small = false,
 }: {
   label: string;
   icon: LucideIcon;
   tone: Tone;
   spinning?: boolean;
+  small?: boolean;
 }) {
   return (
-    <span className={`stamp ${TONE[tone]}`}>
-      <Icon aria-hidden size={18} strokeWidth={2.25} className={spinning ? "motion-safe:animate-spin" : undefined} />
+    <span className={`stamp ${TONE[tone]} ${small ? "px-1.5 py-0" : ""}`}>
+      <Icon aria-hidden size={small ? 16 : 18} strokeWidth={2.25} className={spinning ? "motion-safe:animate-spin" : undefined} />
       {label}
     </span>
   );

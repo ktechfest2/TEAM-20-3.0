@@ -26,6 +26,11 @@ export default function Home() {
           <li>A difference between two records is a question to check, not proof of wrongdoing.</li>
         </ul>
       </section>
+      <footer className="mt-10 border-t border-rule pt-4">
+        <Link href="/reviewer" className="inline-flex min-h-11 items-center text-sm text-ink-muted">
+          Reviewer sign-in
+        </Link>
+      </footer>
     </div>
   );
 }

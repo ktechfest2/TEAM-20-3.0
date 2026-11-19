@@ -217,6 +217,33 @@ describe("direct-to-storage sync", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it.each(["init", "finalize"] as const)(
+    "403 REVIEWER_SESSION at %s leaves captures SAVED_LOCAL without error and stops syncAll",
+    async (step) => {
+      const a = await saveCapture({ ...input, blob: blob() }, db);
+      const b = await saveCapture({ ...input, blob: new Blob([PNG, PNG], { type: "image/png" }) }, db);
+      const refused = () =>
+        Response.json(
+          { error: { code: "REVIEWER_SESSION", message: "This is a reviewer session." } },
+          { status: 403 },
+        );
+      const calls = fakeServer(a.sha256, { [step]: refused });
+      await syncAll(true, db);
+      for (const id of [a.id, b.id]) {
+        expect(await db.captures.get(id)).toMatchObject({ status: "SAVED_LOCAL", lastError: null, attempts: 0 });
+      }
+      // Stopped after the first refusal: only one capture was tried.
+      expect(calls.filter((c) => c.step === "init")).toHaveLength(1);
+    },
+  );
+
+  it("a plain 403 (not a reviewer session) still needs attention", async () => {
+    const rec = await saveCapture({ ...input, blob: blob() }, db);
+    fakeServer(rec.sha256, { init: () => Response.json({ error: { code: "FORBIDDEN" } }, { status: 403 }) });
+    await uploadCapture(rec.id, db);
+    expect(await db.captures.get(rec.id)).toMatchObject({ status: "NEEDS_ATTENTION", lastError: "UNAUTHORIZED" });
+  });
+
   it("recovers an upload interrupted by a closed tab", async () => {
     const rec = await saveCapture({ ...input, blob: blob() }, db);
     await db.captures.update(rec.id, { status: "UPLOADING" });

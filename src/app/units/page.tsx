@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { DemoTag } from "@/components/demo-band";
 import { POLLING_UNITS } from "@/lib/seed/registry";
@@ -24,6 +25,11 @@ export default function UnitsPage() {
           </li>
         ))}
       </ul>
+      <footer className="mt-10 border-t border-rule pt-4">
+        <Link href="/reviewer" className="inline-flex min-h-11 items-center text-sm text-ink-muted">
+          Reviewer sign-in
+        </Link>
+      </footer>
     </div>
   );
 }

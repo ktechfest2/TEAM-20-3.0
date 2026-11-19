@@ -25,7 +25,12 @@ const UPLOAD_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 type Outcome =
   | { kind: "received"; receipt: EvidenceReceipt }
   | { kind: "attention"; reason: AttentionReason }
-  | { kind: "transient" };
+  | { kind: "transient" }
+  /** This browser holds a reviewer session; reviewers cannot upload. Not a fault of the capture. */
+  | { kind: "reviewer_session" };
+
+/** Thrown out of uploadCapture's caller loop so syncAll stops trying further captures. */
+const REVIEWER_SESSION = "REVIEWER_SESSION";
 
 const inFlight = new Set<string>();
 
@@ -86,6 +91,7 @@ async function directUpload(c: LocalCapture): Promise<Outcome> {
     capturedAtClaimed: c.capturedAt,
   });
   if (init.status === 409) return { kind: "attention", reason: "CONFLICT" };
+  if (init.status === 403 && (await errorCode(init)) === REVIEWER_SESSION) return { kind: "reviewer_session" };
   if (!init.ok) return classify(init.status);
   const parsed = UploadInitResponse.safeParse(await init.json().catch(() => null));
   if (!parsed.success) return { kind: "transient" };
@@ -100,6 +106,7 @@ async function directUpload(c: LocalCapture): Promise<Outcome> {
     credentials: "omit",
   });
   if (put.status === 413) return { kind: "attention", reason: "REJECTED_FILE" };
+  if (put.status === 403 && (await errorCode(put)) === REVIEWER_SESSION) return { kind: "reviewer_session" };
   if (!put.ok) return { kind: "transient" };
 
   // 3. finalize: server re-hashes the staged bytes.
@@ -108,6 +115,7 @@ async function directUpload(c: LocalCapture): Promise<Outcome> {
     intentToken: target.intentToken,
   });
   if (fin.ok) return toReceipt(await fin.json().catch(() => null), c);
+  if (fin.status === 403 && (await errorCode(fin)) === REVIEWER_SESSION) return { kind: "reviewer_session" };
   if (fin.status === 409) {
     return (await errorCode(fin)) === "CLIENT_SUBMISSION_CONFLICT"
       ? { kind: "attention", reason: "CONFLICT" }
@@ -121,7 +129,12 @@ export async function recoverInterruptedUploads(db: PollTraceDB = getDB()): Prom
   await db.captures.where("status").equals("UPLOADING").modify({ status: "SAVED_LOCAL" });
 }
 
-export async function uploadCapture(id: string, db: PollTraceDB = getDB()): Promise<void> {
+/**
+ * Returns "reviewer_session" when the server refused because this browser is signed in as a
+ * reviewer: the capture goes back to SAVED_LOCAL untouched (no error, no attempt counted
+ * against it) and callers should stop syncing until a contributor session exists again.
+ */
+export async function uploadCapture(id: string, db: PollTraceDB = getDB()): Promise<void | "reviewer_session"> {
   if (inFlight.has(id)) return;
   inFlight.add(id);
   try {
@@ -145,6 +158,10 @@ export async function uploadCapture(id: string, db: PollTraceDB = getDB()): Prom
       outcome = { kind: "transient" }; // network dropped somewhere in the 3 steps
     }
 
+    if (outcome.kind === "reviewer_session") {
+      await db.captures.update(id, { status: "SAVED_LOCAL", attempts: c.attempts, lastError: null });
+      return "reviewer_session";
+    }
     if (outcome.kind === "received") {
       await db.captures.update(id, { status: "RECEIVED", lastError: null, serverReceipt: outcome.receipt });
     } else if (outcome.kind === "attention") {
@@ -163,7 +180,9 @@ export async function uploadCapture(id: string, db: PollTraceDB = getDB()): Prom
 export async function syncAll(includeAttention = false, db: PollTraceDB = getDB()): Promise<void> {
   const states = includeAttention ? ["SAVED_LOCAL", "NEEDS_ATTENTION"] : ["SAVED_LOCAL"];
   const pending = await db.captures.where("status").anyOf(states).sortBy("capturedAt");
-  for (const c of pending) await uploadCapture(c.id, db);
+  for (const c of pending) {
+    if ((await uploadCapture(c.id, db)) === "reviewer_session") return;
+  }
 }
 
 export const ATTENTION_COPY: Record<AttentionReason, string> = {

@@ -23,6 +23,6 @@ export default defineConfig({
     url: `http://localhost:${PORT}/capture`,
     reuseExistingServer: false,
     timeout: 120_000,
-    env: { POLLTRACE_LOCAL_DATA_DIR: dataDir },
+    env: { POLLTRACE_LOCAL_DATA_DIR: dataDir, POLLTRACE_DEMO_REVIEWERS: "1" },
   },
 });
