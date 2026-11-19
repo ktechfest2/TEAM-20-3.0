@@ -107,6 +107,13 @@ async function signInReviewer(browser: Browser, who: "A" | "B"): Promise<{ ctx: 
   const page = await ctx.newPage();
   await page.goto("/reviewer");
   await page.getByRole("radio", { name: new RegExp(`Synthetic Demo Reviewer ${who}`) }).check();
+  // Production deployments require the demo passcode; local dev does not show the field.
+  const passcode = page.getByLabel("Demo passcode");
+  if (await passcode.isVisible()) {
+    const value = process.env.POLLTRACE_E2E_REVIEWER_PASSCODE;
+    if (!value) throw new Error("Set POLLTRACE_E2E_REVIEWER_PASSCODE to run this test against a deployment.");
+    await passcode.fill(value);
+  }
   await page.getByRole("button", { name: "Sign in as demo reviewer" }).click();
   await page.waitForURL(/\/review$/);
   return { ctx, page };
