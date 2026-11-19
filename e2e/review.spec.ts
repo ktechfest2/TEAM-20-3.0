@@ -111,6 +111,13 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   await expect(rp.getByText("These are synthetic demo reviewer accounts.")).toBeVisible();
   await shot(rp, "reviewer-signin");
   await rp.getByRole("radio", { name: /Synthetic Demo Reviewer A/ }).check();
+  // Production deployments require the demo passcode; local dev does not show the field.
+  const passcode = rp.getByLabel("Demo passcode");
+  if (await passcode.isVisible()) {
+    const value = process.env.POLLTRACE_E2E_REVIEWER_PASSCODE;
+    if (!value) throw new Error("Set POLLTRACE_E2E_REVIEWER_PASSCODE to run this test against a deployment.");
+    await passcode.fill(value);
+  }
   await rp.getByRole("button", { name: "Sign in as demo reviewer" }).click();
 
   await rp.waitForURL(/\/review$/);
