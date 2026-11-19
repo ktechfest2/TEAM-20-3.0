@@ -1,12 +1,11 @@
 "use client";
 
-import { useDeferredValue, useId, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { CircleCheck } from "lucide-react";
 import { ActionBar } from "@/components/action-bar";
 import { DemoTag } from "@/components/demo-band";
-import { POLLING_UNITS, findPollingUnit, searchPollingUnits } from "@/lib/seed/registry";
-
-const uniq = (xs: string[]) => [...new Set(xs)].sort();
+import { UnitSearch } from "@/components/units/unit-search";
+import { POLLING_UNITS, findPollingUnit } from "@/lib/seed/registry";
 
 export function UnitStep({
   initialUnitId,
@@ -15,26 +14,8 @@ export function UnitStep({
   initialUnitId: string | null;
   onConfirm: (unitId: string) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [state, setState] = useState("");
-  const [lga, setLga] = useState("");
-  const [ward, setWard] = useState("");
   const [selected, setSelected] = useState<string | null>(initialUnitId);
-  const deferred = useDeferredValue(query);
   const searchRef = useRef<HTMLInputElement>(null);
-  const ids = { search: useId(), hint: useId(), list: useId() };
-
-  const states = uniq(POLLING_UNITS.map((u) => u.state));
-  const lgas = uniq(POLLING_UNITS.filter((u) => u.state === state).map((u) => u.lga));
-  const wards = uniq(POLLING_UNITS.filter((u) => u.state === state && u.lga === lga).map((u) => u.ward));
-
-  const results = useMemo(
-    () =>
-      searchPollingUnits(deferred, 50).filter(
-        (u) => (!state || u.state === state) && (!lga || u.lga === lga) && (!ward || u.ward === ward),
-      ),
-    [deferred, state, lga, ward],
-  );
   const chosen = selected ? findPollingUnit(selected) : undefined;
 
   return (
@@ -49,95 +30,45 @@ export function UnitStep({
         <span>Polling unit list saved on this device ({POLLING_UNITS.length} demo units). Works without network.</span>
       </p>
 
-      <div className="mt-6">
-        <label htmlFor={ids.search} className="block font-bold">
-          Search by polling unit code or name
-        </label>
-        <p id={ids.hint} className="text-sm text-ink-muted">
-          Example: <span className="font-mono">DEMO.00.00.012</span>
-        </p>
-        <input
-          ref={searchRef}
-          id={ids.search}
-          type="search"
-          inputMode="search"
-          autoComplete="off"
-          aria-describedby={ids.hint}
-          aria-controls={ids.list}
-          className="field mt-2"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <p className="mt-6 text-sm text-ink-muted">Or browse by place:</p>
-      <div className="mt-2 grid gap-3">
-        <Select
-          label="State"
-          value={state}
-          options={states}
-          onChange={(v) => {
-            setState(v);
-            setLga("");
-            setWard("");
-          }}
-        />
-        <Select
-          label="LGA"
-          value={lga}
-          options={lgas}
-          disabledHint={!state ? "Choose a state first" : undefined}
-          onChange={(v) => {
-            setLga(v);
-            setWard("");
-          }}
-        />
-        <Select
-          label="Ward"
-          value={ward}
-          options={wards}
-          disabledHint={!lga ? "Choose an LGA first" : undefined}
-          onChange={setWard}
-        />
-      </div>
-
-      <fieldset className="mt-6">
-        <legend className="font-bold">Polling units</legend>
-        <p className="sr-only" aria-live="polite">
-          {results.length} polling units found
-        </p>
-        {results.length === 0 ? (
-          <p className="mt-3 rounded-md bg-sunken p-4">
-            No polling unit matches “{query}”. Check the code on the result sheet, or browse by place.
-          </p>
-        ) : (
-          <ul id={ids.list} className="slip mt-3">
-            {results.map((u) => (
-              <li key={u.id}>
-                <label className="flex min-h-14 cursor-pointer items-start gap-3 px-4 py-3 has-[:checked]:bg-primary-tint">
-                  <input
-                    type="radio"
-                    name="polling-unit"
-                    value={u.id}
-                    checked={selected === u.id}
-                    onChange={() => setSelected(u.id)}
-                    className="mt-1 size-5 shrink-0 accent-primary"
-                  />
-                  <span className="min-w-0">
-                    <span className="block font-mono font-semibold">{u.code}</span>
-                    <span className="block">
-                      {u.name} {u.synthetic ? <DemoTag /> : null}
-                    </span>
-                    <span className="block text-sm text-ink-muted">
-                      {u.ward} · {u.lga} · {u.state}
-                    </span>
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
+      <UnitSearch
+        searchRef={searchRef}
+        renderResults={(results, query, listId) => (
+          <fieldset className="mt-6">
+            <legend className="font-bold">Polling units</legend>
+            {results.length === 0 ? (
+              <p className="mt-3 rounded-md bg-sunken p-4">
+                No polling unit matches “{query}”. Check the code on the result sheet, or browse by place.
+              </p>
+            ) : (
+              <ul id={listId} className="slip mt-3">
+                {results.map((u) => (
+                  <li key={u.id}>
+                    <label className="flex min-h-14 cursor-pointer items-start gap-3 px-4 py-3 has-[:checked]:bg-primary-tint">
+                      <input
+                        type="radio"
+                        name="polling-unit"
+                        value={u.id}
+                        checked={selected === u.id}
+                        onChange={() => setSelected(u.id)}
+                        className="mt-1 size-5 shrink-0 accent-primary"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-mono font-semibold">{u.code}</span>
+                        <span className="block">
+                          {u.name} {u.synthetic ? <DemoTag /> : null}
+                        </span>
+                        <span className="block text-sm text-ink-muted">
+                          {u.ward} · {u.lga} · {u.state}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </fieldset>
         )}
-      </fieldset>
+      />
 
       {chosen ? (
         <ActionBar
@@ -175,39 +106,3 @@ export function UnitStep({
   );
 }
 
-function Select({
-  label,
-  value,
-  options,
-  onChange,
-  disabledHint,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (v: string) => void;
-  disabledHint?: string;
-}) {
-  const id = useId();
-  return (
-    <div>
-      <label htmlFor={id} className="block text-sm font-bold">
-        {label}
-      </label>
-      <select
-        id={id}
-        className="field mt-1"
-        value={value}
-        disabled={Boolean(disabledHint)}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">{disabledHint ?? `Any ${label}`}</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}

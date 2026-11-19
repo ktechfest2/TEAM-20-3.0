@@ -1,7 +1,7 @@
 import { CircleCheck, RefreshCw, Smartphone, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { CaptureStatus } from "@/lib/offline/db";
 
-export type Tone = "local" | "progress" | "done" | "attention" | "integrity" | "outline" | "demo";
+export type Tone = "local" | "progress" | "done" | "attention" | "integrity" | "outline" | "tealOutline" | "demo";
 
 const TONE: Record<Tone, string> = {
   local: "bg-sunken text-ink",
@@ -10,6 +10,7 @@ const TONE: Record<Tone, string> = {
   attention: "bg-caution-tint text-caution",
   integrity: "bg-conflict-tint text-conflict",
   outline: "bg-surface text-ink",
+  tealOutline: "bg-surface text-primary",
   // Synthetic data only: the one dashed border in the product.
   demo: "border-dashed bg-demo-tint text-demo",
 };

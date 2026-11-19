@@ -168,6 +168,19 @@ export function ReviewQueue() {
           ) : null}
         </>
       )}
+
+      {state.status === "ready" ? (
+        <section aria-labelledby="refs-waiting-h" className="mt-10 max-w-xl border-t border-rule pt-6">
+          <h2 id="refs-waiting-h" className="text-xl">
+            References waiting for a second reviewer
+          </h2>
+          {/* No feed of references awaiting review exists yet; each unit lists its own records. */}
+          <p className="mt-2">Open a polling unit to see its reference records.</p>
+          <Link href="/units" className="mt-2 inline-flex min-h-11 items-center font-bold text-primary">
+            Find a polling unit
+          </Link>
+        </section>
+      ) : null}
     </section>
   );
 }
