@@ -68,3 +68,6 @@ pnpm-debug.log*
 
 # Local dev evidence store (LOCAL adapter, never deployed)
 /.data/
+
+# Local scratch notes (may hold credentials)
+Notes.txt
