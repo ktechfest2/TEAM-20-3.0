@@ -24,7 +24,7 @@ import { findPollingUnit } from "@/lib/seed/registry";
 
 type State =
   | { status: "loading" }
-  | { status: "ready"; v: UnitVerification; cachedAt: string | null }
+  | { status: "ready"; v: UnitVerification; cachedAt: string | null; fetchedAt: string }
   | { status: "failed"; kind: "notFound" | "offline" | "error" };
 
 const KEY = (id: string) => `polltrace:unit:${id}`;
@@ -71,11 +71,15 @@ export function UnitComparison({ id }: { id: string }) {
       .then((r) => {
         if (r.ok) {
           writeCache(id, r.data);
-          setState({ status: "ready", v: r.data, cachedAt: null });
+          setState({ status: "ready", v: r.data, cachedAt: null, fetchedAt: new Date().toISOString() });
         } else if (r.kind === "http" && r.status === 404) setState({ status: "failed", kind: "notFound" });
         else if (r.kind === "network") {
           const c = readCache(id);
-          setState(c ? { status: "ready", v: c.v, cachedAt: c.savedAt } : { status: "failed", kind: "offline" });
+          setState(
+            c
+              ? { status: "ready", v: c.v, cachedAt: c.savedAt, fetchedAt: c.savedAt }
+              : { status: "failed", kind: "offline" },
+          );
         } else setState({ status: "failed", kind: "error" });
       })
       .catch(() => {
@@ -100,7 +104,9 @@ export function UnitComparison({ id }: { id: string }) {
       <section className="mx-auto max-w-xl pt-4">
         <h1 className="font-mono text-xl">{unit.code}</h1>
         <p className="mt-4">
-          {state.kind === "offline" ? "Connect to the internet to see this comparison." : "This comparison did not load."}
+          {state.kind === "offline"
+            ? "Connect to the internet to see this comparison."
+            : "This comparison did not load."}
         </p>
         <button
           type="button"
@@ -115,16 +121,18 @@ export function UnitComparison({ id }: { id: string }) {
       </section>
     );
   }
-  return <Comparison v={state.v} cachedAt={state.cachedAt} unit={unit} />;
+  return <Comparison v={state.v} cachedAt={state.cachedAt} fetchedAt={state.fetchedAt} unit={unit} />;
 }
 
 function Comparison({
   v,
   cachedAt,
+  fetchedAt,
   unit,
 }: {
   v: UnitVerification;
   cachedAt: string | null;
+  fetchedAt: string;
   unit: NonNullable<ReturnType<typeof findPollingUnit>>;
 }) {
   const session = useSession();
@@ -137,8 +145,13 @@ function Comparison({
   const confirmedDifference = v.status === "REFERENCE_DISCREPANCY" && !v.differenceUnconfirmed;
   const showKey = nonZero.length > 0 && (v.status === "REFERENCE_DISCREPANCY" || v.differenceUnconfirmed);
   const allegationOpen =
-    v.status === "REFERENCE_DISCREPANCY" || v.status === "CONFLICTING_EVIDENCE" || (v.differenceUnconfirmed && nonZero.length > 0);
-  const means = v.status === "INCONCLUSIVE" ? v.reasons[0] : meta.means({ distinct: v.distinctOriginals, independent: v.independentSources, parties });
+    v.status === "REFERENCE_DISCREPANCY" ||
+    v.status === "CONFLICTING_EVIDENCE" ||
+    (v.differenceUnconfirmed && nonZero.length > 0);
+  const means =
+    v.status === "INCONCLUSIVE"
+      ? v.reasons[0]
+      : meta.means({ distinct: v.distinctOriginals, independent: v.independentSources, parties });
   const copies = v.members.filter((m) => m.duplicateOf !== null).length;
   const noEvidence = v.status === "NO_EVIDENCE";
 
@@ -177,39 +190,7 @@ function Comparison({
               <Stamp label={meta.stamp} icon={meta.icon} tone={meta.tone} />
             </div>
             <p className="text-lg font-bold">{v.reasons[0]}</p>
-          </div>
-          <dl className="grid gap-3 px-4 py-4">
-            <div>
-              <dt className="font-bold">What this means</dt>
-              <dd>{means}</dd>
-            </div>
-            <div>
-              <dt className="font-bold">What this does not mean</dt>
-              <dd>{meta.doesNotMean}</dd>
-            </div>
-          </dl>
-          {v.reasons.length > 1 ? (
-            <div className="px-4 py-3">
-              <details className="group lg:hidden">
-                <summary className="flex min-h-11 cursor-pointer items-center font-bold text-primary">More detail</summary>
-                <ReasonList reasons={v.reasons.slice(1)} />
-              </details>
-              <div className="hidden lg:block">
-                <p className="font-bold">More detail</p>
-                <ReasonList reasons={v.reasons.slice(1)} />
-              </div>
-            </div>
-          ) : null}
-        </section>
-
-        {noEvidence ? null : (
-          <>
-            <dl className="divide-y divide-rule rounded-md bg-sunken px-4">
-              <Count label="Accepted photos counted" n={v.distinctOriginals} />
-              <Count label="Independent sources (reviewer judged)" n={v.independentSources} />
-              <Count label="Exact copies not counted" n={copies} />
-            </dl>
-            <ComparisonTable v={v} confirmedDifference={confirmedDifference} />
+            {/* Key figure sits inside the status slip so it is above the fold at 360px. */}
             {showKey
               ? nonZero.map((d) => (
                   <div key={d.partyCode} className="grid gap-1">
@@ -222,6 +203,56 @@ function Comparison({
                   </div>
                 ))
               : null}
+          </div>
+          <dl className="grid gap-3 px-4 py-4">
+            {noEvidence ? null : (
+              <div>
+                <dt className="font-bold">What this means</dt>
+                <dd>{means}</dd>
+              </div>
+            )}
+            <div>
+              <dt className="font-bold">What this does not mean</dt>
+              <dd>{meta.doesNotMean}</dd>
+            </div>
+          </dl>
+          {v.reasons.length > 1 ? (
+            <div className="px-4 py-3">
+              <details className="group lg:hidden">
+                <summary className="flex min-h-11 cursor-pointer items-center font-bold text-primary">
+                  More detail
+                </summary>
+                <ReasonList reasons={v.reasons.slice(1)} />
+              </details>
+              <div className="hidden lg:block">
+                <p className="font-bold">More detail</p>
+                <ReasonList reasons={v.reasons.slice(1)} />
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        <p className="-mt-3 text-sm text-ink-muted">
+          Comparison as of <span className="font-mono text-ink">{fmtTime(fetchedAt)}</span>
+        </p>
+
+        {noEvidence && !reviewer ? (
+          <p>
+            Have a photo of this result sheet?{" "}
+            <Link href="/capture" className="inline-flex min-h-11 items-center font-bold text-primary">
+              Capture it
+            </Link>
+          </p>
+        ) : null}
+
+        {noEvidence ? null : (
+          <>
+            <dl className="divide-y divide-rule rounded-md bg-sunken px-4">
+              <Count label="Accepted photos counted" n={v.distinctOriginals} />
+              <Count label="Independent sources (reviewer judged)" n={v.independentSources} />
+              <Count label="Exact copies not counted" n={copies} />
+            </dl>
+            <ComparisonTable v={v} confirmedDifference={confirmedDifference} reviewer={reviewer} />
           </>
         )}
 
@@ -229,9 +260,15 @@ function Comparison({
       </div>
 
       <div className="grid content-start gap-8 lg:col-span-5">
-        {v.reference ? <ReferenceSlip reference={v.reference} /> : null}
+        {v.reference ? (
+          <ReferenceSlip reference={v.reference} tools={reviewer ? <ReviewerTools unitId={unit.id} /> : null} />
+        ) : null}
         {noEvidence ? null : <Members v={v} reviewer={reviewer} />}
-        {reviewer ? <ReviewerFooter unitId={unit.id} /> : null}
+        {reviewer && !v.reference ? (
+          <section aria-label="Reviewer tools" className="rounded-md bg-sunken p-4">
+            <ReviewerTools unitId={unit.id} />
+          </section>
+        ) : null}
       </div>
     </div>
   );
@@ -256,7 +293,15 @@ function Count({ label, n }: { label: string; n: number }) {
   );
 }
 
-function ComparisonTable({ v, confirmedDifference }: { v: UnitVerification; confirmedDifference: boolean }) {
+function ComparisonTable({
+  v,
+  confirmedDifference,
+  reviewer,
+}: {
+  v: UnitVerification;
+  confirmedDifference: boolean;
+  reviewer: boolean;
+}) {
   if (!v.witnessFigures) {
     return <p className="rounded-md bg-sunken p-4">There are no agreed witness figures to compare yet.</p>;
   }
@@ -264,7 +309,12 @@ function ComparisonTable({ v, confirmedDifference }: { v: UnitVerification; conf
   const hasRef = v.reference !== null;
   const rows: FieldDifference[] = hasRef
     ? v.differences
-    : Object.keys(witness).map((p) => ({ partyCode: p, witness: witness[p], reference: null, referenceMinusWitness: null }));
+    : Object.keys(witness).map((p) => ({
+        partyCode: p,
+        witness: witness[p],
+        reference: null,
+        referenceMinusWitness: null,
+      }));
 
   return (
     <div>
@@ -314,7 +364,7 @@ function ComparisonTable({ v, confirmedDifference }: { v: UnitVerification; conf
               >
                 <th scope="row" className="py-3 pr-2 pl-1 align-top font-normal">
                   {partyLabel(d.partyCode)}
-                  <span className="block font-mono text-xs text-ink-muted">{d.partyCode}</span>
+                  {reviewer ? <span className="block font-mono text-xs text-ink-muted">{d.partyCode}</span> : null}
                 </th>
                 <td className="py-3 pr-2 text-right align-top font-mono">
                   {d.witness !== null ? (
@@ -330,9 +380,16 @@ function ComparisonTable({ v, confirmedDifference }: { v: UnitVerification; conf
                 </td>
                 {hasRef ? (
                   <>
-                    <td className="py-3 pr-2 text-right align-top font-mono">{d.reference ?? <span className="font-sans">Not known</span>}</td>
+                    <td className="py-3 pr-2 text-right align-top font-mono">
+                      {d.reference ?? <span className="font-sans">Not known</span>}
+                    </td>
                     <td className="py-3 pr-1 text-right align-top">
-                      <DifferenceCell diff={diff} amber={amber} unconfirmed={v.differenceUnconfirmed} conflicting={conflicting} />
+                      <DifferenceCell
+                        diff={diff}
+                        amber={amber}
+                        unconfirmed={v.differenceUnconfirmed}
+                        conflicting={conflicting}
+                      />
                     </td>
                   </>
                 ) : null}
@@ -434,7 +491,13 @@ function NoAllegation({ open }: { open: boolean }) {
   );
 }
 
-function ReferenceSlip({ reference: r }: { reference: NonNullable<UnitVerification["reference"]> }) {
+function ReferenceSlip({
+  reference: r,
+  tools,
+}: {
+  reference: NonNullable<UnitVerification["reference"]>;
+  tools: ReactNode;
+}) {
   const p = PROVENANCE[r.reviewState];
   return (
     <section aria-labelledby="ref-h" className="slip">
@@ -443,7 +506,11 @@ function ReferenceSlip({ reference: r }: { reference: NonNullable<UnitVerificati
           Reference record, version <span className="font-mono">{r.version}</span>
         </h2>
         <p className="mt-1 flex flex-wrap items-center gap-2">
-          {r.sourceType === "SYNTHETIC_DEMO" ? <strong>{REFERENCE_TYPE_LINE[r.sourceType]}</strong> : REFERENCE_TYPE_LINE[r.sourceType]}
+          {r.sourceType === "SYNTHETIC_DEMO" ? (
+            <strong>{REFERENCE_TYPE_LINE[r.sourceType]}</strong>
+          ) : (
+            REFERENCE_TYPE_LINE[r.sourceType]
+          )}
           {r.synthetic ? <DemoTag /> : null}
         </p>
       </div>
@@ -465,6 +532,7 @@ function ReferenceSlip({ reference: r }: { reference: NonNullable<UnitVerificati
         </div>
         <p className="text-sm">{p.text}</p>
       </div>
+      {tools ? <div className="px-4 py-3">{tools}</div> : null}
     </section>
   );
 }
@@ -483,58 +551,129 @@ function Members({ v, reviewer }: { v: UnitVerification; reviewer: boolean }) {
       {v.members.length === 0 ? (
         <p className="mt-2">No photos yet.</p>
       ) : (
-        <ol className="slip mt-3">
-          {v.members.map((m, i) => (
-            <li key={m.evidenceId} className="grid gap-2 px-4 py-3">
-              <p className="flex flex-wrap items-baseline gap-x-3">
-                <span className="font-bold">Photo {i + 1}</span>
-                <span className="font-mono text-sm">{shortFingerprint(m.sha256)}</span>
-              </p>
-              <p className="text-sm">
-                {m.revisionNumber !== null ? (
-                  <>
-                    Version <span className="font-mono">{m.revisionNumber}</span> of figures
-                  </>
-                ) : (
-                  "No confirmed figures"
-                )}{" "}
-                · {INDEPENDENCE_LINE[m.independence]}
-              </p>
-              <div>
-                {m.duplicateOf ? (
-                  <Stamp
-                    small
-                    label={`Exact copy of photo ${indexOf.get(m.duplicateOf) ?? "?"} — not counted`}
-                    icon={Copy}
-                    tone="attention"
-                  />
-                ) : m.eligible ? (
-                  <Stamp small label="Counted" icon={CircleCheck} tone="tealOutline" />
-                ) : (
-                  <Stamp small label="Not counted" icon={CircleMinus} tone="outline" />
-                )}
-              </div>
-              {!m.eligible && m.excludedReason && !m.duplicateOf ? <p className="text-sm">{m.excludedReason}</p> : null}
-              {reviewer ? (
-                <Link href={`/evidence/${m.evidenceId}`} className="inline-flex min-h-11 items-center font-bold text-primary">
-                  Open ProofTrail<span className="sr-only"> for photo {i + 1}</span>
-                </Link>
-              ) : null}
-            </li>
-          ))}
-        </ol>
+        <MemberList v={v} reviewer={reviewer} indexOf={indexOf} />
       )}
     </section>
   );
 }
 
-function ReviewerFooter({ unitId }: { unitId: string }) {
-  const [counts, setCounts] = useState<{ n: number; k: number } | null>(null);
+const INDEPENDENCE_ALL: Record<UnitVerification["members"][number]["independence"], string> = {
+  REVIEWER_CONFIRMED: "all judged independent by a reviewer",
+  UNVERIFIED: "independence not assessed",
+  DISPUTED: "all judged not independent by a reviewer",
+};
+
+/**
+ * When every photo is counted with the same independence, one summary line says so and the
+ * individual rows sit behind "Show each photo"; otherwise every row is listed.
+ */
+function MemberList({
+  v,
+  reviewer,
+  indexOf,
+}: {
+  v: UnitVerification;
+  reviewer: boolean;
+  indexOf: Map<string, number>;
+}) {
+  const allSame =
+    v.members.length > 1 &&
+    v.members.every((m) => m.eligible && !m.duplicateOf && m.independence === v.members[0].independence);
+  const rows = <MemberRows v={v} reviewer={reviewer} indexOf={indexOf} />;
+  if (!allSame) return rows;
+  const n = v.members.length;
+  return (
+    <div className="mt-3 grid gap-2">
+      <p className="flex flex-wrap items-center gap-2">
+        <Stamp small label="Counted" icon={CircleCheck} tone="tealOutline" />
+        <span>
+          <span className="font-mono">{n}</span> photos counted · {INDEPENDENCE_ALL[v.members[0].independence]}
+        </span>
+      </p>
+      <details>
+        <summary className="flex min-h-11 cursor-pointer items-center font-bold text-primary">Show each photo</summary>
+        {rows}
+      </details>
+    </div>
+  );
+}
+
+function MemberRows({
+  v,
+  reviewer,
+  indexOf,
+}: {
+  v: UnitVerification;
+  reviewer: boolean;
+  indexOf: Map<string, number>;
+}) {
+  return (
+    <ol className="slip mt-3">
+      {v.members.map((m, i) => (
+        <li key={m.evidenceId} className="grid gap-2 px-4 py-3">
+          <p className="flex flex-wrap items-baseline gap-x-3">
+            <span className="font-bold">Photo {i + 1}</span>
+            <span className="font-mono text-sm">{shortFingerprint(m.sha256)}</span>
+          </p>
+          <p className="text-sm">
+            {m.revisionNumber !== null ? (
+              <>
+                Version <span className="font-mono">{m.revisionNumber}</span> of figures
+              </>
+            ) : (
+              "No confirmed figures"
+            )}{" "}
+            · {INDEPENDENCE_LINE[m.independence]}
+          </p>
+          <div>
+            {m.duplicateOf ? (
+              <Stamp
+                small
+                label={`Exact copy of photo ${indexOf.get(m.duplicateOf) ?? "?"} — not counted`}
+                icon={Copy}
+                tone="attention"
+              />
+            ) : m.eligible ? (
+              <Stamp small label="Counted" icon={CircleCheck} tone="tealOutline" />
+            ) : (
+              <Stamp small label="Not counted" icon={CircleMinus} tone="outline" />
+            )}
+          </div>
+          {!m.eligible && m.excludedReason && !m.duplicateOf ? <p className="text-sm">{m.excludedReason}</p> : null}
+          {reviewer ? (
+            <Link
+              href={`/evidence/${m.evidenceId}`}
+              className="inline-flex min-h-11 items-center font-bold text-primary"
+            >
+              Open ProofTrail<span className="sr-only"> for photo {i + 1}</span>
+            </Link>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function ReviewerTools({ unitId }: { unitId: string }) {
+  const [newest, setNewest] = useState<{ total: number; version: number; state: string } | null>(null);
   useEffect(() => {
     const ctrl = new AbortController();
-    apiJson(`/api/units/${unitId}/references?electionId=${DEMO_ELECTION_ID}`, z.array(ReferenceView), { signal: ctrl.signal })
+    apiJson(`/api/units/${unitId}/references?electionId=${DEMO_ELECTION_ID}`, z.array(ReferenceView), {
+      signal: ctrl.signal,
+    })
       .then((r) => {
-        if (r.ok) setCounts({ n: r.data.length, k: r.data.filter((x) => x.reviews.length === 0).length });
+        if (!r.ok || r.data.length === 0) return;
+        const latest = [...r.data].sort((a, b) => b.version - a.version)[0];
+        const last = [...latest.reviews].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+        setNewest({
+          total: r.data.length,
+          version: latest.version,
+          state: !last
+            ? "waiting for a second reviewer"
+            : last.decision === "SOURCE_CONFIRMED"
+              ? "source confirmed by a second reviewer"
+              : "source not accepted",
+        });
       })
       .catch(() => {
         /* aborted */
@@ -542,16 +681,16 @@ function ReviewerFooter({ unitId }: { unitId: string }) {
     return () => ctrl.abort();
   }, [unitId]);
   return (
-    <section aria-label="Reviewer tools" className="rounded-md bg-sunken p-4">
+    <div className="grid gap-2">
       <Link href={`/units/${unitId}/references`} className="btn btn-secondary w-full no-underline">
         Reference records for this unit
       </Link>
-      {counts ? (
-        <p className="mt-2 text-sm">
-          <span className="font-mono">{counts.n}</span> reference {plural(counts.n, "version")},{" "}
-          <span className="font-mono">{counts.k}</span> waiting for a second reviewer
+      {newest ? (
+        <p className="text-sm">
+          Newest version <span className="font-mono">{newest.version}</span>: {newest.state}.{" "}
+          <span className="font-mono">{newest.total}</span> {plural(newest.total, "version")} kept.
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }

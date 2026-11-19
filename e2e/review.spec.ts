@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect as baseExpect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -8,6 +8,9 @@ import path from "node:path";
  * (new browser) demo reviewer A → queue → accept with reason → decision on the ProofTrail.
  * Set POLLTRACE_SHOTS_DIR to also save screenshots (figures steps at 360/390/768/1280 + 360x400).
  */
+
+// Dev server compiles each route on first visit; with parallel workers that can exceed 5s.
+const expect = baseExpect.configure({ timeout: 20_000 });
 
 const PHOTO = path.join(__dirname, "synthetic-result-sheet.png");
 const SHOTS = process.env.POLLTRACE_SHOTS_DIR;
@@ -54,8 +57,8 @@ async function assertPhotoAndFieldVisible(page: Page, label: string, file?: stri
 
 async function captureAndUpload(page: Page): Promise<string> {
   await page.goto("/capture");
-  await page.getByLabel("Search by polling unit code or name").fill("012");
-  await page.getByRole("radio", { name: /DEMO\.00\.00\.012/ }).check();
+  await page.getByLabel("Search by polling unit code or name").fill("201");
+  await page.getByRole("radio", { name: /DEMO\.01\.02\.201/ }).check();
   await page.getByRole("button", { name: "Yes, this is the polling unit" }).click();
   await page.locator('input[type="file"]:not([capture])').setInputFiles(PHOTO);
   await expect(page.getByRole("heading", { name: "Check your photo" })).toBeVisible();
@@ -76,7 +79,7 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
 
   // ---- Contributor: capture and upload.
   const id = await captureAndUpload(page);
-  await expect(page.getByRole("heading", { level: 1, name: /Result photo for DEMO\.00\.00\.012/ })).toBeVisible({
+  await expect(page.getByRole("heading", { level: 1, name: /Result photo for DEMO\.01\.02\.201/ })).toBeVisible({
     timeout: 20_000,
   });
   await expect(page.getByRole("note", { name: "Demo data notice" })).toBeVisible();
@@ -152,7 +155,7 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   const reviewerCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const rp = await reviewerCtx.newPage();
   await rp.goto("/reviewer");
-  await expect(rp.getByRole("heading", { name: "Reviewer sign-in" })).toBeVisible();
+  await expect(rp.getByRole("heading", { name: "Reviewer sign-in" })).toBeVisible({ timeout: 20_000 });
   await expect(rp.getByText("These are synthetic demo reviewer accounts.")).toBeVisible();
   await shot(rp, "reviewer-signin");
   await rp.getByRole("radio", { name: /Synthetic Demo Reviewer A/ }).check();
@@ -206,7 +209,7 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   const init = await rp.request.post("/api/evidence/uploads", {
     data: {
       electionId: "demo-election",
-      pollingUnitId: "demo-pu-012",
+      pollingUnitId: "demo-pu-201",
       clientSubmissionId: crypto.randomUUID(),
       originalSha256: "0".repeat(64),
       sizeBytes: 10,

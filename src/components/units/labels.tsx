@@ -1,4 +1,4 @@
-import { Ban, CircleCheck, Clock, Hourglass, ShieldCheck, ShieldQuestion, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { Ban, Clock, Copy, Hourglass, ShieldCheck, ShieldQuestion, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 import type { ReferenceType, VerificationStatus } from "@/lib/contracts";
 import type { Tone } from "@/components/stamp";
 import { partyLabel } from "@/components/client/format";
@@ -43,7 +43,7 @@ export const STATUS_META: Record<VerificationStatus, StatusMeta> = {
   },
   MATCHING_SUBMISSIONS: {
     stamp: "Matching submissions",
-    icon: CircleCheck,
+    icon: Copy,
     tone: "tealOutline",
     means: ({ distinct }) => `${distinct} different photos show the same figures.`,
     doesNotMean:
@@ -83,7 +83,7 @@ export const STATUS_META: Record<VerificationStatus, StatusMeta> = {
 
 export const PROVENANCE = {
   CONFIRMED: {
-    stamp: "Source checked by a second reviewer",
+    stamp: "Source confirmed by a second reviewer",
     icon: ShieldCheck,
     tone: "tealOutline" as Tone,
     text: "A different reviewer from the one who added it checked where this record came from. This is not certification by INEC.",

@@ -41,10 +41,13 @@ export function ReferencesScreen({ id }: { id: string }) {
   useEffect(() => {
     if (!unit) return;
     const ctrl = new AbortController();
-    apiJson(`/api/units/${encodeURIComponent(id)}/references?electionId=${DEMO_ELECTION_ID}`, RefList, { signal: ctrl.signal })
+    apiJson(`/api/units/${encodeURIComponent(id)}/references?electionId=${DEMO_ELECTION_ID}`, RefList, {
+      signal: ctrl.signal,
+    })
       .then((r) => {
         if (r.ok) setState({ status: "ready", refs: r.data });
-        else if (r.kind === "http" && (r.status === 401 || r.status === 403)) setState({ status: "failed", kind: "forbidden" });
+        else if (r.kind === "http" && (r.status === 401 || r.status === 403))
+          setState({ status: "failed", kind: "forbidden" });
         else if (r.kind === "http" && r.status === 404) setState({ status: "failed", kind: "notFound" });
         else if (r.kind === "network") setState({ status: "failed", kind: "offline" });
         else setState({ status: "failed", kind: "error" });
@@ -117,7 +120,9 @@ export function ReferencesScreen({ id }: { id: string }) {
           the reviewed witness photos.
         </p>
         <p>It is only used to confirm a difference after a second reviewer has checked where it came from.</p>
-        <p>Records are kept permanently. A new version or a later review supersedes an earlier one but never erases it.</p>
+        <p>
+          Records are kept permanently. A new version or a later review supersedes an earlier one but never erases it.
+        </p>
       </div>
 
       {state.status === "loading" ? (
@@ -156,15 +161,7 @@ export function ReferencesScreen({ id }: { id: string }) {
             {state.refs.length === 0 ? (
               <p className="mt-2">No reference record for this polling unit yet.</p>
             ) : (
-              <ol className="mt-3 grid gap-4">
-                {[...state.refs]
-                  .sort((a, b) => b.version - a.version)
-                  .map((r, i) => (
-                    <li key={r.id}>
-                      <VersionSlip reference={r} newest={i === 0} unitId={unit.id} onChanged={refresh} />
-                    </li>
-                  ))}
-              </ol>
+              <VersionList refs={state.refs} unitId={unit.id} onChanged={refresh} />
             )}
           </section>
           <section aria-labelledby="add-h" className="lg:col-span-5">
@@ -183,6 +180,32 @@ export function ReferencesScreen({ id }: { id: string }) {
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ versions */
+
+/** Newest version first and actionable; older versions (not used in comparison) behind a disclosure. */
+function VersionList({ refs, unitId, onChanged }: { refs: Ref[]; unitId: string; onChanged: () => void }) {
+  const [newest, ...older] = [...refs].sort((a, b) => b.version - a.version);
+  return (
+    <div className="mt-3 grid gap-4">
+      <VersionSlip reference={newest} newest unitId={unitId} onChanged={onChanged} />
+      {older.length ? (
+        <details>
+          <summary className="flex min-h-11 cursor-pointer items-center font-bold text-primary">
+            Show older versions (<span className="font-mono">{older.length}</span>)
+          </summary>
+          <ol className="mt-3 grid gap-4">
+            {older.map((r) => (
+              <li key={r.id}>
+                <VersionSlip reference={r} newest={false} unitId={unitId} onChanged={onChanged} />
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -262,11 +285,19 @@ function VersionSlip({
           <ol className="grid gap-3">
             {reviews.map((rv, i) => (
               <li key={`${rv.createdAt}-${i}`} className="grid gap-1">
-                <p className="font-bold">{rv.decision === "SOURCE_CONFIRMED" ? "Source confirmed" : "Source not accepted"}</p>
+                <p className="font-bold">
+                  {rv.decision === "SOURCE_CONFIRMED" ? "Source confirmed" : "Source not accepted"}
+                </p>
                 <blockquote className="italic">“{rv.reason}”</blockquote>
                 <p className="text-sm text-ink-muted">
-                  {rv.byViewer ? "By you" : <>Reviewer <span className="font-mono">{rv.reviewerRef}</span></>} ·{" "}
-                  <span className="font-mono">{fmtTime(rv.createdAt)}</span>
+                  {rv.byViewer ? (
+                    "By you"
+                  ) : (
+                    <>
+                      Reviewer <span className="font-mono">{rv.reviewerRef}</span>
+                    </>
+                  )}{" "}
+                  · <span className="font-mono">{fmtTime(rv.createdAt)}</span>
                 </p>
                 {i > 0 ? <p className="text-sm">Superseded by a later review (kept on record)</p> : null}
               </li>
@@ -274,20 +305,23 @@ function VersionSlip({
           </ol>
         ) : null}
       </div>
-      <div className="px-4 py-3">
-        {r.importedByViewer ? (
-          <p className="flex items-start gap-3 rounded-md bg-sunken p-3">
-            <Ban aria-hidden size={20} className="mt-0.5 shrink-0" />
-            <span>You added this record, so you cannot check its source. Another reviewer must do it.</span>
-          </p>
-        ) : open ? (
-          <SourceReview reference={r} unitId={unitId} onRecorded={onChanged} onCancel={() => setOpen(false)} />
-        ) : (
-          <button type="button" className="btn btn-secondary w-full md:w-auto" onClick={() => setOpen(true)}>
-            Check this source
-          </button>
-        )}
-      </div>
+      {/* Only the newest version is used in comparison, so only it can be checked here. */}
+      {newest ? (
+        <div className="px-4 py-3">
+          {r.importedByViewer ? (
+            <p className="flex items-start gap-3 rounded-md bg-sunken p-3">
+              <Ban aria-hidden size={20} className="mt-0.5 shrink-0" />
+              <span>You added this record, so you cannot check its source. Another reviewer must do it.</span>
+            </p>
+          ) : open ? (
+            <SourceReview reference={r} unitId={unitId} onRecorded={onChanged} onCancel={() => setOpen(false)} />
+          ) : (
+            <button type="button" className="btn btn-secondary w-full md:w-auto" onClick={() => setOpen(true)}>
+              Check this source
+            </button>
+          )}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -340,7 +374,9 @@ function SourceReview({
     return (
       <p role="alert" className="flex items-start gap-3 rounded-md bg-sunken p-3">
         <Ban aria-hidden size={20} className="mt-0.5 shrink-0" />
-        <span>You added this record, so you cannot check its source. Another reviewer must do it. Nothing was recorded.</span>
+        <span>
+          You added this record, so you cannot check its source. Another reviewer must do it. Nothing was recorded.
+        </span>
       </p>
     );
   }
@@ -375,14 +411,22 @@ function SourceReview({
     if (res.kind === "http" && res.code === "SELF_REVIEW") return setOutcome({ kind: "selfReview" });
     if (res.kind === "http" && (res.status === 401 || res.status === 403)) return setOutcome({ kind: "sessionEnded" });
     const msgs = res.kind === "http" ? issueMessages(res.body) : [];
-    setOutcome({ kind: "invalid", message: msgs.join("; ") || (res.kind === "http" && res.message) || "the server did not accept it" });
+    setOutcome({
+      kind: "invalid",
+      message: msgs.join("; ") || (res.kind === "http" && res.message) || "the server did not accept it",
+    });
   }
 
   const errorList = Object.values(errors).filter(Boolean);
   return (
     <div className="grid gap-4">
       {errorList.length ? (
-        <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-md border-2 border-caution bg-caution-tint p-3">
+        <div
+          ref={summaryRef}
+          tabIndex={-1}
+          role="alert"
+          className="rounded-md border-2 border-caution bg-caution-tint p-3"
+        >
           <p className="font-bold">Before you continue:</p>
           <ul className="list-disc pl-5">
             {errorList.map((m) => (
@@ -393,7 +437,9 @@ function SourceReview({
       ) : null}
       <fieldset disabled={confirming}>
         <legend className="text-lg font-bold">Is the source of this record believable?</legend>
-        <p className="mt-1 text-sm">You are checking where the figures came from, not whether they are the true result.</p>
+        <p className="mt-1 text-sm">
+          You are checking where the figures came from, not whether they are the true result.
+        </p>
         <div className="mt-2 grid gap-2">
           <Choice
             name={`${uid}-d`}
@@ -462,14 +508,18 @@ function SourceReview({
           <dl className="mt-2 grid gap-1">
             <div>
               <dt className="inline font-bold">Decision: </dt>
-              <dd className="inline">{decision === "SOURCE_CONFIRMED" ? "Confirm the source" : "Do not accept the source"}</dd>
+              <dd className="inline">
+                {decision === "SOURCE_CONFIRMED" ? "Confirm the source" : "Do not accept the source"}
+              </dd>
             </div>
             <div>
               <dt className="inline font-bold">Reason: </dt>
               <dd className="inline">“{reason.trim()}”</dd>
             </div>
           </dl>
-          <p className="mt-3 font-bold">This check is kept permanently. A later check can supersede it but not erase it.</p>
+          <p className="mt-3 font-bold">
+            This check is kept permanently. A later check can supersede it but not erase it.
+          </p>
           {outcome.kind === "network" ? (
             <p role="alert" className="mt-3">
               Could not reach the server. Nothing was recorded. Your choices are kept. Try again.
@@ -535,14 +585,24 @@ function AddReference({
   const forcedSynthetic = synthetic || type === "SYNTHETIC_DEMO";
   const isSynthetic = forcedSynthetic || markedSynthetic;
   const fid = (k: FieldKey) => `${uid}-${k}`;
+  const hasTyping = Boolean(description.trim() || url.trim() || PARTY_ROSTER.some((p) => figures[p].trim()));
+  const discard = () => {
+    setDescription("");
+    setUrl("");
+    setFigures(Object.fromEntries(PARTY_ROSTER.map((p) => [p, ""])));
+    setErrors({});
+    setServerError(null);
+  };
 
   const validate = () => {
     const e: Partial<Record<FieldKey, string>> = {};
     if (!type) e.type = "Choose where these figures are from.";
     if (description.trim().length < 3) e.description = "Describe the source in a few words.";
     const u = url.trim();
-    if (u && !(/^https:\/\/\S+$/.test(u) && URL.canParse(u))) e.url = "Enter a full link starting with https://, or leave it empty.";
-    for (const p of PARTY_ROSTER) if (!DIGITS.test(figures[p].trim())) e[p] = `${partyLabel(p)}: type the figure from the source.`;
+    if (u && !(/^https:\/\/\S+$/.test(u) && URL.canParse(u)))
+      e.url = "Enter a full link starting with https://, or leave it empty.";
+    for (const p of PARTY_ROSTER)
+      if (!DIGITS.test(figures[p].trim())) e[p] = `${partyLabel(p)}: type the figure from the source.`;
     setErrors(e);
     if (Object.keys(e).length) {
       requestAnimationFrame(() => summaryRef.current?.focus());
@@ -579,9 +639,11 @@ function AddReference({
       return;
     }
     setConfirming(false);
-    if (res.kind === "network") setServerError("Could not reach the server. Nothing was recorded. Your typing is kept. Try again.");
+    if (res.kind === "network")
+      setServerError("Could not reach the server. Nothing was recorded. Your typing is kept. Try again.");
     else if (res.kind === "http" && (res.status === 401 || res.status === 403)) setServerError("SESSION");
-    else if (res.kind === "http" && res.code === "INVALID_SOURCE_URL") setErrors({ url: "Enter a full link starting with https://, or leave it empty." });
+    else if (res.kind === "http" && res.code === "INVALID_SOURCE_URL")
+      setErrors({ url: "Enter a full link starting with https://, or leave it empty." });
     else if (res.kind === "http" && res.code === "REFERENCE_VERSION_CONFLICT")
       setServerError("Another reference was being saved at the same time. Nothing was recorded. Try again.");
     else {
@@ -608,16 +670,30 @@ function AddReference({
         </p>
       ) : null}
       {!open ? (
-        <button
-          type="button"
-          className="btn btn-secondary w-full md:w-auto"
-          onClick={() => {
-            setOpen(true);
-            setAdded(null);
-          }}
-        >
-          Add a new version
-        </button>
+        hasTyping ? (
+          <div className="grid gap-2 rounded-md bg-sunken p-3">
+            <p>You have a version in progress. What you typed is kept on this page.</p>
+            <div className="flex flex-col gap-2 md:flex-row">
+              <button type="button" className="btn btn-secondary" onClick={() => setOpen(true)}>
+                Continue the new version
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={discard}>
+                Discard what you typed
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary w-full md:w-auto"
+            onClick={() => {
+              setOpen(true);
+              setAdded(null);
+            }}
+          >
+            Add a new version
+          </button>
+        )
       ) : (
         <form
           noValidate
@@ -627,7 +703,12 @@ function AddReference({
           className="grid gap-5"
         >
           {errorList.length || serverError ? (
-            <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-md border-2 border-caution bg-caution-tint p-3">
+            <div
+              ref={summaryRef}
+              tabIndex={-1}
+              role="alert"
+              className="rounded-md border-2 border-caution bg-caution-tint p-3"
+            >
               {serverError === "SESSION" ? (
                 <p>
                   Your reviewer session has ended. Nothing was recorded.{" "}
@@ -792,7 +873,7 @@ function AddReference({
                 Continue to confirm
               </button>
               <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>
-                Cancel
+                Close (keeps what you typed)
               </button>
             </div>
           ) : (
@@ -833,10 +914,20 @@ function AddReference({
                 confirm a difference after a different reviewer checks its source.
               </p>
               <div className="mt-4 flex flex-col gap-2 md:flex-row">
-                <button type="button" className="btn btn-primary" disabled={busy || !online} onClick={() => void submit()}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy || !online}
+                  onClick={() => void submit()}
+                >
                   {busy ? "Adding…" : "Add record"}
                 </button>
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirming(false)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={busy}
+                  onClick={() => setConfirming(false)}
+                >
                   Go back and change
                 </button>
               </div>

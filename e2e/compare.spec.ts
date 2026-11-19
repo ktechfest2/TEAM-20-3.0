@@ -208,6 +208,9 @@ test("two independent photos + a source-checked reference → DIFFERS FROM REFER
   // Reviewer view of the unit: ProofTrail links + reference records button.
   await a.page.goto(`/units/${UNIT.id}`);
   await expect(a.page.getByText("Differs from reference")).toBeVisible({ timeout: 20_000 });
+  // Identical counted photos collapse into one line; the rows (with ProofTrail links) are behind a disclosure.
+  await expect(a.page.getByText(/photos counted · all judged independent by a reviewer/)).toBeVisible();
+  await a.page.getByText("Show each photo").click();
   await expect(a.page.getByRole("link", { name: /Open ProofTrail/ }).first()).toBeVisible();
   await expect(a.page.getByRole("link", { name: "Reference records for this unit" })).toBeVisible();
   await shot(a.page, "unit-reviewer");
@@ -223,7 +226,7 @@ test("two independent photos + a source-checked reference → DIFFERS FROM REFER
   await expect(rowB).toContainText("+60");
   await expect(rowB).toContainText("Reference is 60 higher");
   await expect(p.getByRole("heading", { name: "Why no allegation is made" })).toBeVisible();
-  await expect(p.getByText("Source checked by a second reviewer")).toBeVisible();
+  await expect(p.getByText("Source confirmed by a second reviewer")).toBeVisible();
   await expect(p.getByText("Synthetic demo reference (not real)")).toBeVisible();
   // Redaction: no images, no links to originals or ProofTrails, no reviewer tools, no alias.
   await expect(p.locator("main img")).toHaveCount(0);

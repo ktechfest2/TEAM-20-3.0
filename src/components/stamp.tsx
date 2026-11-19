@@ -36,7 +36,7 @@ export function Stamp({
   small?: boolean;
 }) {
   return (
-    <span className={`stamp ${TONE[tone]} ${small ? "px-1.5 py-0" : ""}`}>
+    <span className={`stamp ${TONE[tone]} ${small ? "px-1.5 py-0.5" : ""}`}>
       <Icon aria-hidden size={small ? 16 : 18} strokeWidth={2.25} className={spinning ? "motion-safe:animate-spin" : undefined} />
       {label}
     </span>
