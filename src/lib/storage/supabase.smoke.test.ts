@@ -267,3 +267,119 @@ describe.skipIf(!enabled)("SUPABASE smoke: extract + confirm + review + trace", 
     expect(log.reviewDeleteBlocked).not.toBe("NOT BLOCKED");
   });
 });
+
+describe.skipIf(!enabled)("SUPABASE smoke: references + unit verification (+60)", () => {
+  it("end to end on an otherwise empty synthetic unit", { timeout: 90_000 }, async () => {
+    const UNIT = process.env.POLLTRACE_SMOKE_UNIT ?? "demo-pu-102"; // never the live demo unit demo-pu-012
+    expect(UNIT).not.toBe("demo-pu-012");
+    const { createStorage } = await import("@/lib/storage");
+    const { createFixedWindowLimiter } = await import("@/lib/evidence/rate-limit");
+    const { submitEvidence, sha256HexNode } = await import("@/lib/evidence/service");
+    const wf = await import("@/lib/evidence/workflow");
+    const refs = await import("@/lib/references/service");
+    const { DEMO_REVIEWERS } = await import("@/lib/auth/demo-reviewers");
+    const { createClient } = await import("@supabase/supabase-js");
+
+    const storage = createStorage(process.env);
+    expect(storage.mode).toBe("SUPABASE");
+    const deps = { storage, rateLimiter: createFixedWindowLimiter(1000, 60_000) };
+    const now = () => new Date().toISOString();
+    const asP = (c: { id: string; role: "CONTRIBUTOR" | "REVIEWER"; alias: string }) => ({ contributorId: c.id, role: c.role, alias: c.alias, synthetic: true });
+    const mk = async () =>
+      asP(await storage.repo.ensureContributor({ id: randomUUID(), alias: "Synthetic smoke-test contributor", role: "CONTRIBUTOR", assurance: "SYNTHETIC_DEMO", synthetic: true, createdAt: now() }));
+    const [w1, w2] = [await mk(), await mk()];
+    const revA = asP(await storage.repo.ensureContributor({ ...DEMO_REVIEWERS[0], createdAt: now() }));
+    const revB = asP(await storage.repo.ensureContributor({ ...DEMO_REVIEWERS[1], createdAt: now() }));
+
+    const log: Record<string, unknown> = { unit: UNIT };
+    const evidenceIds: string[] = [];
+    for (const [w, tag] of [[w1, "A"], [w2, "B"]] as const) {
+      const bytes = png(`smoke-verif-${tag}-${randomUUID()}`);
+      const up = await submitEvidence(
+        { principal: w, file: bytes, fields: { electionId: "demo-election", pollingUnitId: UNIT, clientSubmissionId: randomUUID(), originalSha256: sha256HexNode(bytes) } },
+        deps,
+      );
+      const id = (up.body as { id: string }).id;
+      evidenceIds.push(id);
+      const ex = await wf.extractEvidence(w, id, { mode: "MANUAL" }, deps);
+      const cf = await wf.confirmEvidence(
+        w,
+        id,
+        {
+          basedOnRevision: 1,
+          formType: "EC8A",
+          pollingUnitCodeOnSheet: null,
+          entries: [
+            { partyCode: "PARTY_A", votes: 145, needsReview: false },
+            { partyCode: "PARTY_B", votes: 210, needsReview: false },
+            { partyCode: "PARTY_C", votes: 42, needsReview: false },
+          ],
+          accreditedVoters: null,
+          rejectedVotes: null,
+          validVotes: 397,
+        },
+        deps,
+      );
+      const rv = await wf.reviewEvidence(revA, id, { decision: "ACCEPTED", independenceStatus: "REVIEWER_CONFIRMED", reason: "smoke accept" }, deps);
+      log[`witness${tag}`] = [up.status, ex.status, cf.status, rv.status];
+    }
+    log.evidenceIds = evidenceIds;
+    const v0 = (await refs.getUnitVerification(UNIT, "demo-election", deps)).body as { status: string };
+    log.statusBeforeReference = v0.status;
+
+    const imp = await refs.importReference(
+      revB,
+      { electionId: "demo-election", pollingUnitId: UNIT, sourceType: "SYNTHETIC_DEMO", sourceDescription: "Smoke-test synthetic reference (fictional)", figures: { PARTY_A: 145, PARTY_B: 270, PARTY_C: 42 }, synthetic: true },
+      deps,
+    );
+    const ref = imp.body as { id: string; version: number; reviewState: string };
+    log.import = { status: imp.status, version: ref.version, reviewState: ref.reviewState, referenceId: ref.id };
+    const vUnconfirmed = (await refs.getUnitVerification(UNIT, "demo-election", deps)).body as { status: string; differenceUnconfirmed: boolean };
+    log.unconfirmed = { status: vUnconfirmed.status, differenceUnconfirmed: vUnconfirmed.differenceUnconfirmed };
+    log.selfReview = (await refs.reviewReference(revB, ref.id, { decision: "SOURCE_CONFIRMED", reason: "self" }, deps)).status;
+    const rr = await refs.reviewReference(revA, ref.id, { decision: "SOURCE_CONFIRMED", reason: "smoke source check" }, deps);
+    log.referenceReview = { status: rr.status, reviewState: (rr.body as { reviewState: string }).reviewState };
+
+    const v = (await refs.getUnitVerification(UNIT, "demo-election", deps)).body as {
+      status: string;
+      independentSources: number;
+      differences: Array<{ partyCode: string; referenceMinusWitness: number | null }>;
+      differenceUnconfirmed: boolean;
+      synthetic: boolean;
+      reference: { reviewState: string; sourceVerified: boolean };
+    };
+    log.final = {
+      status: v.status,
+      independentSources: v.independentSources,
+      differences: Object.fromEntries(v.differences.map((d) => [d.partyCode, d.referenceMinusWitness])),
+      differenceUnconfirmed: v.differenceUnconfirmed,
+      synthetic: v.synthetic,
+      reference: { reviewState: v.reference.reviewState, sourceVerified: v.reference.sourceVerified },
+      containsContributorIds: [w1, w2, revA, revB].some((p) => JSON.stringify(v).includes(p.contributorId)),
+    };
+
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+    const u1 = await db.from("reference_results").update({ figures: { PARTY_B: 210 } }).eq("id", ref.id);
+    const u2 = await db.from("reference_reviews").delete().eq("reference_id", ref.id);
+    log.referenceUpdateBlocked = u1.error?.message ?? "NOT BLOCKED";
+    log.referenceReviewDeleteBlocked = u2.error?.message ?? "NOT BLOCKED";
+
+    console.log("SUPABASE VERIFICATION SMOKE", JSON.stringify(log, null, 2));
+    if (process.env.POLLTRACE_SMOKE_OUT) (await import("node:fs")).writeFileSync(process.env.POLLTRACE_SMOKE_OUT, JSON.stringify(log, null, 2));
+
+    expect(log.statusBeforeReference).toBe("CORROBORATED");
+    expect(log.unconfirmed).toEqual({ status: expect.not.stringMatching(/^REFERENCE_DISCREPANCY$/), differenceUnconfirmed: true });
+    expect(log.selfReview).toBe(403);
+    expect(log.final).toMatchObject({
+      status: "REFERENCE_DISCREPANCY",
+      independentSources: 2,
+      differences: { PARTY_A: 0, PARTY_B: 60, PARTY_C: 0 },
+      differenceUnconfirmed: false,
+      synthetic: true,
+      reference: { reviewState: "CONFIRMED", sourceVerified: true },
+      containsContributorIds: false,
+    });
+    expect(log.referenceUpdateBlocked).not.toBe("NOT BLOCKED");
+    expect(log.referenceReviewDeleteBlocked).not.toBe("NOT BLOCKED");
+  });
+});

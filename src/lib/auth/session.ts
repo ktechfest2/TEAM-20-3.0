@@ -124,3 +124,11 @@ export function contributorRef(contributorId: string): string {
 export function reviewerRef(reviewerId: string): string {
   return createHmac("sha256", getSessionSecret()).update(`reviewer:${reviewerId}`).digest("hex").slice(0, 12);
 }
+
+/**
+ * Opaque per-submitter ref for the PUBLIC unit verification view. Separate HMAC domain, so it
+ * cannot be linked to contributorRef / reviewerRef shown elsewhere or to the session cookie.
+ */
+export function unitVerificationRef(contributorId: string): string {
+  return createHmac("sha256", getSessionSecret()).update(`unit-verification:${contributorId}`).digest("hex").slice(0, 16);
+}

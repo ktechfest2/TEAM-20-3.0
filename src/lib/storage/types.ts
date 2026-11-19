@@ -13,6 +13,7 @@ import type {
   FormType,
   Independence,
   ResultField,
+  ReferenceType,
   ReviewDecision,
 } from "@/lib/contracts";
 import type { RevisionOrigin } from "@/lib/contracts/trace";
@@ -88,6 +89,33 @@ export interface ReviewEventRecord {
   createdAt: string;
 }
 
+/** Immutable reference record (reference_results). source_verified column stays false; derived. */
+export interface ReferenceRecord {
+  id: string;
+  electionId: string;
+  pollingUnitId: string;
+  sourceType: ReferenceType;
+  sourceDescription: string;
+  /** Stored as text only. NEVER fetched by the server (no SSRF surface). */
+  sourceUrl: string | null;
+  version: number;
+  figures: Record<string, number>;
+  synthetic: boolean;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export type ReferenceReviewDecision = "SOURCE_CONFIRMED" | "SOURCE_REJECTED";
+
+export interface ReferenceReviewRecord {
+  id: string;
+  referenceId: string;
+  reviewerId: string;
+  decision: ReferenceReviewDecision;
+  reason: string;
+  createdAt: string;
+}
+
 export type InsertRevisionResult =
   | { inserted: true; record: RevisionRecord }
   /** unique(evidence_id, revision_number) taken: someone else wrote that number first. */
@@ -125,6 +153,19 @@ export interface EvidenceRepository {
   /** Append-only; ordered by createdAt ascending. */
   listReviews(evidenceIds: string[]): Promise<ReviewEventRecord[]>;
   insertReview(record: ReviewEventRecord): Promise<void>;
+
+  /** All evidence for one election + polling unit (any status). */
+  listEvidenceForUnit(electionId: string, pollingUnitId: string): Promise<EvidenceRecord[]>;
+
+  /** Never overwrites: {inserted:false} if that (election, unit, version) exists. */
+  insertReference(record: ReferenceRecord): Promise<{ inserted: boolean }>;
+  getReference(id: string): Promise<ReferenceRecord | null>;
+  /** Ordered by version ascending. */
+  listReferences(electionId: string, pollingUnitId: string): Promise<ReferenceRecord[]>;
+  /** Append-only. */
+  insertReferenceReview(record: ReferenceReviewRecord): Promise<void>;
+  /** Ordered by createdAt ascending. */
+  listReferenceReviews(referenceIds: string[]): Promise<ReferenceReviewRecord[]>;
 }
 
 export type PutResult = "CREATED" | "ALREADY_PRESENT_IDENTICAL";

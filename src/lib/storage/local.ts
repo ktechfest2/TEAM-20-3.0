@@ -18,6 +18,8 @@ import type {
   InsertRevisionResult,
   ObjectStore,
   PutResult,
+  ReferenceRecord,
+  ReferenceReviewRecord,
   ReviewEventRecord,
   RevisionRecord,
 } from "./types";
@@ -30,9 +32,19 @@ interface LocalDb {
   audit: AuditEventRecord[];
   revisions: RevisionRecord[];
   reviews: ReviewEventRecord[];
+  references: ReferenceRecord[];
+  referenceReviews: ReferenceReviewRecord[];
 }
 
-const emptyDb = (): LocalDb => ({ contributors: {}, evidence: {}, audit: [], revisions: [], reviews: [] });
+const emptyDb = (): LocalDb => ({
+  contributors: {},
+  evidence: {},
+  audit: [],
+  revisions: [],
+  reviews: [],
+  references: [],
+  referenceReviews: [],
+});
 /** Deep copy so callers can never mutate stored (append-only) records in place. */
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -203,6 +215,66 @@ class LocalRepository implements EvidenceRepository {
       db.reviews.push(clone(record));
       return { result: undefined, write: true };
     });
+  }
+
+  listEvidenceForUnit(electionId: string, pollingUnitId: string) {
+    return this.withLock(async (db) => ({
+      result: clone(
+        Object.values(db.evidence)
+          .filter((e) => e.electionId === electionId && e.pollingUnitId === pollingUnitId)
+          .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id)),
+      ),
+      write: false,
+    }));
+  }
+
+  insertReference(record: ReferenceRecord) {
+    return this.withLock(async (db) => {
+      db.references ??= [];
+      const taken = db.references.some(
+        (r) => r.electionId === record.electionId && r.pollingUnitId === record.pollingUnitId && r.version === record.version,
+      );
+      if (taken) return { result: { inserted: false }, write: false };
+      db.references.push(clone(record));
+      return { result: { inserted: true }, write: true };
+    });
+  }
+
+  getReference(id: string) {
+    return this.withLock(async (db) => {
+      const r = (db.references ?? []).find((x) => x.id === id);
+      return { result: r ? clone(r) : null, write: false };
+    });
+  }
+
+  listReferences(electionId: string, pollingUnitId: string) {
+    return this.withLock(async (db) => ({
+      result: clone(
+        (db.references ?? [])
+          .filter((r) => r.electionId === electionId && r.pollingUnitId === pollingUnitId)
+          .sort((a, b) => a.version - b.version),
+      ),
+      write: false,
+    }));
+  }
+
+  insertReferenceReview(record: ReferenceReviewRecord) {
+    return this.withLock(async (db) => {
+      db.referenceReviews ??= [];
+      db.referenceReviews.push(clone(record));
+      return { result: undefined, write: true };
+    });
+  }
+
+  listReferenceReviews(referenceIds: string[]) {
+    return this.withLock(async (db) => ({
+      result: clone(
+        (db.referenceReviews ?? [])
+          .filter((r) => referenceIds.includes(r.referenceId))
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+      ),
+      write: false,
+    }));
   }
 }
 

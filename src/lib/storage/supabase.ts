@@ -16,6 +16,8 @@ import type {
   InsertRevisionResult,
   ObjectStore,
   PutResult,
+  ReferenceRecord,
+  ReferenceReviewRecord,
   ReviewEventRecord,
   RevisionRecord,
 } from "./types";
@@ -96,6 +98,31 @@ const toReview = (r: Row): ReviewEventRecord => ({
   reviewerId: String(r.reviewer_id),
   decision: r.decision as ReviewEventRecord["decision"],
   independenceStatus: r.independence_status as ReviewEventRecord["independenceStatus"],
+  reason: String(r.reason),
+  createdAt: iso(r.created_at),
+});
+
+const toReference = (r: Row): ReferenceRecord => ({
+  id: String(r.id),
+  electionId: String(r.election_id),
+  pollingUnitId: String(r.polling_unit_id),
+  sourceType: r.source_type as ReferenceRecord["sourceType"],
+  sourceDescription: String(r.source_description),
+  sourceUrl: (r.source_url as string | null) ?? null,
+  version: Number(r.version),
+  figures: Object.fromEntries(
+    Object.entries((r.figures as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
+  ),
+  synthetic: Boolean(r.synthetic),
+  createdBy: r.created_by == null ? null : String(r.created_by),
+  createdAt: iso(r.created_at),
+});
+
+const toReferenceReview = (r: Row): ReferenceReviewRecord => ({
+  id: String(r.id),
+  referenceId: String(r.reference_id),
+  reviewerId: String(r.reviewer_id),
+  decision: r.decision as ReferenceReviewRecord["decision"],
   reason: String(r.reason),
   createdAt: iso(r.created_at),
 });
@@ -274,6 +301,79 @@ class SupabaseRepository implements EvidenceRepository {
       .order("created_at", { ascending: true });
     if (error) throw new Error(`reviews read failed: ${error.message}`);
     return (data ?? []).map(toReview);
+  }
+
+  async listEvidenceForUnit(electionId: string, pollingUnitId: string) {
+    const { data, error } = await this.db
+      .from("evidence")
+      .select("*")
+      .eq("election_id", electionId)
+      .eq("polling_unit_id", pollingUnitId)
+      .order("received_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(1000);
+    if (error) throw new Error(`unit evidence read failed: ${error.message}`);
+    return (data ?? []).map(toEvidence);
+  }
+
+  async insertReference(r: ReferenceRecord) {
+    const { error } = await this.db.from("reference_results").insert({
+      id: r.id,
+      election_id: r.electionId,
+      polling_unit_id: r.pollingUnitId,
+      source_type: r.sourceType,
+      source_description: r.sourceDescription,
+      source_url: r.sourceUrl,
+      version: r.version,
+      figures: r.figures,
+      source_verified: false, // derived from reference_reviews; column intentionally unused
+      synthetic: r.synthetic,
+      created_by: r.createdBy,
+      created_at: r.createdAt,
+    });
+    if (error?.code === UNIQUE_VIOLATION) return { inserted: false };
+    if (error) throw new Error(`reference insert failed: ${error.message}`);
+    return { inserted: true };
+  }
+
+  async getReference(id: string) {
+    const { data, error } = await this.db.from("reference_results").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(`reference read failed: ${error.message}`);
+    return data ? toReference(data) : null;
+  }
+
+  async listReferences(electionId: string, pollingUnitId: string) {
+    const { data, error } = await this.db
+      .from("reference_results")
+      .select("*")
+      .eq("election_id", electionId)
+      .eq("polling_unit_id", pollingUnitId)
+      .order("version", { ascending: true });
+    if (error) throw new Error(`references read failed: ${error.message}`);
+    return (data ?? []).map(toReference);
+  }
+
+  async insertReferenceReview(r: ReferenceReviewRecord) {
+    const { error } = await this.db.from("reference_reviews").insert({
+      id: r.id,
+      reference_id: r.referenceId,
+      reviewer_id: r.reviewerId,
+      decision: r.decision,
+      reason: r.reason,
+      created_at: r.createdAt,
+    });
+    if (error) throw new Error(`reference review insert failed: ${error.message}`);
+  }
+
+  async listReferenceReviews(referenceIds: string[]) {
+    if (referenceIds.length === 0) return [];
+    const { data, error } = await this.db
+      .from("reference_reviews")
+      .select("*")
+      .in("reference_id", referenceIds)
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(`reference reviews read failed: ${error.message}`);
+    return (data ?? []).map(toReferenceReview);
   }
 
   async insertReview(r: ReviewEventRecord) {
