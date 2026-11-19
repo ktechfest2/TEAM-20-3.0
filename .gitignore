@@ -1,0 +1,70 @@
+# Secrets — only the example file is committed
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# Next.js build output
+.next/
+out/
+next-env.d.ts
+
+# General build output
+build/
+dist/
+*.tsbuildinfo
+
+# Vercel
+.vercel/
+
+# Supabase local state (keep supabase/migrations and config.toml committed)
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# Tests: Playwright and Vitest
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+coverage/
+.vitest/
+
+# Caches
+.cache/
+.turbo/
+.eslintcache
+
+# Generated service worker files (if a PWA plugin is used)
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+
+# Claude Code local config (agents, skills, settings, hooks)
+.claude/
+
+# Project docs, fixtures and scripts (kept local only)
+/docs/
+/fixtures/
+/scripts/
+
+# Markdown files, except READMEs
+*.md
+!README.md
+
+# OS / editor / logs
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local dev evidence store (LOCAL adapter, never deployed)
+/.data/
