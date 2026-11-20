@@ -17,6 +17,20 @@ PollTrace is an offline-first web app. Voters, party agents and observers in Nig
 
 ---
 
+## Screenshots
+
+Captured on production (https://polltrace.vercel.app, commit `e34858d`) during the timed rehearsal on 2026-11-20, at phone width (390 px). **All data shown is synthetic.** The result sheets are drawn test images labelled "SYNTHETIC DEMO - NOT A REAL FORM".
+
+| 1. Offline receipt | 2. AI suggestions, checked by a person |
+|---|---|
+| <img src="public/readme/01-offline-receipt.png" alt="Capture receipt while offline: Saved on this device, not yet received by server, with the photo's SHA-256 fingerprint" width="300"> | <img src="public/readme/02-ai-suggestions.png" alt="Figures screen: the AI's values are marked AI SUGGESTION and an uncertain field must be ticked as checked on the photo" width="300"> |
+| The phone is offline. The original photo and its SHA-256 fingerprint are saved on the device, and the receipt says plainly that the server has not received it yet. | Claude read the synthetic sheet. Values are suggestions until a person checks each one against the photo; anything the model was unsure of must be ticked or corrected. |
+| **3. ProofTrail timeline** | **4. Public comparison (+60)** |
+| <img src="public/readme/03-prooftrail-timeline.png" alt="Timeline: device claim, server received and re-hashed, AI suggestion not checked yet, figures confirmed by a person" width="300"> | <img src="public/readme/04-discrepancy-comparison.png" alt="Public comparison for DEMO.00.00.012: differs from reference, +60 for Party B, with what this does and does not mean" width="300"> |
+| Every step is kept: the phone's time is shown as a claim, the server re-hash, the AI draft and the human confirmation are separate entries. | Two reviewer-judged independent witnesses vs a source-checked synthetic reference. The page says what the difference does **not** mean: no allegation is made. |
+
+---
+
 ## Contents
 
 1. [Problem brief](#1-problem-brief)
