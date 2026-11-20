@@ -32,6 +32,8 @@ export default defineConfig({
         env: {
           POLLTRACE_LOCAL_DATA_DIR: dataDir,
           POLLTRACE_DEMO_REVIEWERS: "1",
+          // Guided /demo stages (e2e/demo.spec.ts). Local test value only; never a real secret.
+          POLLTRACE_DEMO_ADMIN_PASSCODE: "e2e-demo-admin",
           // Local runs use the isolated LOCAL_DEV store, never the shared Supabase project
           // (empty values win over .env.local). Opt in with POLLTRACE_E2E_SUPABASE=1.
           ...(process.env.POLLTRACE_E2E_SUPABASE === "1"
