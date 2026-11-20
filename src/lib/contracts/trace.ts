@@ -27,7 +27,13 @@ const Votes = z.number().int().min(0).nullable();
 export const ExtractRequestMode = z.enum(["AUTO", "REAL_VISION", "MANUAL", "DEMO_FIXTURE"]);
 export type ExtractRequestMode = z.infer<typeof ExtractRequestMode>;
 
-/** POST /api/evidence/:id/extract — owner or reviewer. Creates a machine/manual revision. */
+/**
+ * POST /api/evidence/:id/extract — OWNER only (2026-11-20). Creates a machine/manual revision.
+ * Errors (UI always offers manual entry after any of them; the original is never touched):
+ * 422 MODE_UNAVAILABLE · 422 EXTRACTION_UNSUPPORTED_DOCUMENT (not a result sheet / unreadable)
+ * · 502 EXTRACTION_REJECTED (invalid model output) · 504 EXTRACTION_TIMEOUT
+ * · 409 EXTRACTION_IN_PROGRESS · 429 EXTRACTION_LIMIT_REACHED (per evidence) · 429 RATE_LIMITED.
+ */
 export const ExtractRequest = z.object({ mode: ExtractRequestMode.default("AUTO") });
 export type ExtractRequest = z.infer<typeof ExtractRequest>;
 
@@ -73,6 +79,21 @@ export const ResultRevisionView = z.object({
   rejectedVotes: Votes,
   validVotes: Votes,
   warnings: z.array(z.string()),
+  /**
+   * Fields the extractor could not read with certainty (e.g. "PARTY_B", "validVotes",
+   * "pollingUnitCode"). Each needs a human look; never a confidence score. Empty for human revisions.
+   */
+  uncertainFields: z.array(z.string()).default([]),
+  /** Who produced a machine draft (REAL_VISION only). Null for manual/demo/human revisions. */
+  provenance: z
+    .object({
+      provider: z.string(),
+      model: z.string(),
+      extractedAt: z.iso.datetime(),
+      durationMs: z.number().int().min(0),
+    })
+    .nullable()
+    .default(null),
   humanConfirmed: z.boolean(),
   /** Revision this one was based on (null for the first). */
   basedOnRevision: z.number().int().min(1).nullable(),

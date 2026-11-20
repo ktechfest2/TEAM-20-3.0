@@ -26,6 +26,9 @@ export function toRevisionView(r: RevisionRecord, viewerId: string): ResultRevis
     rejectedVotes: r.rejectedVotes,
     validVotes: r.validVotes,
     warnings: [...r.warnings],
+    // Filled from stored extraction metadata by the real-vision slice (evidence-backend).
+    uncertainFields: [],
+    provenance: null,
     humanConfirmed: r.humanConfirmed,
     basedOnRevision: r.basedOnRevision,
     note: r.note,
