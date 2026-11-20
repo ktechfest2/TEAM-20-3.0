@@ -10,7 +10,7 @@ export function UnitFinder() {
   return (
     <UnitSearch
       renderResults={(results, query, listId) => (
-        <section aria-label="Polling units" className="mt-6">
+        <section aria-label="Polling units" className="mt-4">
           {results.length === 0 ? (
             <p className="rounded-md bg-sunken p-4">
               No polling unit matches “{query}”. Check the code, or browse by place.

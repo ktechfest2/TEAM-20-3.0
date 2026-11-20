@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useId, useMemo, useState, type ReactNode, type Ref } from "react";
+import { ChevronDown } from "lucide-react";
 import type { PollingUnit } from "@/lib/contracts";
 import { POLLING_UNITS, searchPollingUnits } from "@/lib/seed/registry";
 
@@ -22,6 +23,8 @@ export function UnitSearch({
   const [state, setState] = useState("");
   const [lga, setLga] = useState("");
   const [ward, setWard] = useState("");
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const filterSummary = [state, lga, ward].filter(Boolean).join(" › ");
   const deferred = useDeferredValue(query);
   const ids = { search: useId(), hint: useId(), list: useId() };
 
@@ -60,8 +63,26 @@ export function UnitSearch({
         />
       </div>
 
-      <p className="mt-6 text-sm text-ink-muted">Or browse by place:</p>
-      <div className="mt-2 grid gap-3">
+      {/* Browse sits in a closed disclosure so results follow the search box directly. */}
+      <details
+        className="group mt-3 rounded-md border border-rule bg-surface"
+        open={browseOpen}
+        onToggle={(e) => setBrowseOpen(e.currentTarget.open)}
+      >
+        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2 text-sm [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold text-primary">Or browse by place</span>
+            {filterSummary ? (
+              <span className="block text-ink-muted">Showing: {filterSummary}</span>
+            ) : null}
+          </span>
+          <ChevronDown
+            aria-hidden
+            size={20}
+            className="shrink-0 text-primary transition-transform group-open:rotate-180"
+          />
+        </summary>
+        <div className="grid gap-3 px-4 pb-4">
         <Select
           label="State"
           value={state}
@@ -89,7 +110,8 @@ export function UnitSearch({
           disabledHint={!lga ? "Choose an LGA first" : undefined}
           onChange={setWard}
         />
-      </div>
+        </div>
+      </details>
 
       <p className="sr-only" aria-live="polite">
         {results.length} polling units found

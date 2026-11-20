@@ -33,7 +33,7 @@ export function UnitStep({
       <UnitSearch
         searchRef={searchRef}
         renderResults={(results, query, listId) => (
-          <fieldset className="mt-6">
+          <fieldset className="mt-4">
             <legend className="font-bold">Polling units</legend>
             {results.length === 0 ? (
               <p className="mt-3 rounded-md bg-sunken p-4">
