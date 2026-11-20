@@ -329,7 +329,7 @@ Every number is synthetic, and the DEMO DATA band stays visible all the time. St
 
 ## 10. Known limitations
 
-- **AI reading is not switched on in production.** Claude vision extraction is implemented and unit-tested with mocks. Per the status log it has **not yet been run against the live Anthropic API**, because no key had been provided at the time of writing. Production uses manual entry and labelled demo figures.
+- **AI reading has only been tested on synthetic, printed-style sheets.** Live Claude extraction runs in production (see §12), but accuracy on real handwritten EC8A forms, poor light or angled photos has not been measured. Every AI value must still be checked and confirmed by a person.
 - **Demo reviewer identities instead of real sign-in.** Reviewers are "Synthetic Demo Reviewer A/B", protected by a shared passcode in production. Contributors are anonymous cookie sessions. There are no real accounts or verified identities, and the source type is the submitter's own claim.
 - **Rate limits are in memory, per server instance.** On Vercel they reset on cold start, so they add friction but are not a quota.
 - **Abandoned staging uploads are not cleaned up.** They stay private and are never promoted.
@@ -357,7 +357,13 @@ PollTrace was written during the hackathon. The first commit is dated 2026-11-19
 
 **While building:** PollTrace was built with **Claude Code (Anthropic)**, using the model **Opus 5.5**, as a coding assistant with sub-agents (backend, offline UX, extraction/verification, design review, QA, release). Design reviews used the Impeccable design skill inside Claude Code. People on the team chose the product and security direction, made the decisions, and reviewed the work.
 
-**When the app runs:** Claude vision extraction is implemented (`src/lib/extraction/anthropic.ts`, Anthropic SDK, default model `claude-opus-5-5`, configurable). Whether it is available live depends on server configuration. At the time of writing (2026-11-20), production is configured for manual entry (`VISION_PROVIDER=manual`) and no Anthropic key has been provided, so **no AI model runs in production**. The figures screen then says "Automatic reading is not available in this version. Figures are typed in by a person."
+**When the app runs:** Claude vision extraction is implemented (`src/lib/extraction/anthropic.ts`, Anthropic SDK, default model `claude-opus-5-5`, configurable). It is **switched on in production** (`VISION_PROVIDER=anthropic`, key stored only as a server-side Vercel environment variable). Verified 2026-11-20:
+- Live smoke test (local, real API) on the synthetic sheet: read 145 / 210 / 42, total valid 397 and the polling-unit code exactly; returned **null and flagged uncertain** for accredited and rejected voters, which are not on the sheet (no invented numbers); 5.1 s.
+- Live browser E2E on production: upload → AI reading → person changes one value and ticks uncertain fields → confirms → reviewer accepts → ProofTrail shows the AI version with provenance and the person's change; the stored original's SHA-256 still equals the uploaded file.
+- Production extraction latency: 7.2 s and 4.6 s (2 runs, 0 failures). A run on a sheet printed with a different unit code correctly showed the mismatch and blocked acceptance.
+- No key material in 8 production pages / 16 JS bundles, nor in stored extraction records.
+
+When no key is configured, the figures screen says "Automatic reading is not available right now. Figures are typed in by a person."
 
 When AI reading is switched on:
 - It is shown as "Read the figures with AI".
