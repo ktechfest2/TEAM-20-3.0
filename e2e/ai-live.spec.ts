@@ -1,4 +1,6 @@
 import { expect as baseExpect, test, type Browser, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -9,7 +11,10 @@ import path from "node:path";
  */
 
 const expect = baseExpect.configure({ timeout: 30_000 });
-const SHEET = path.join(__dirname, "..", "public", "demo", "synthetic-result-sheet.jpg");
+// Synthetic sheet printed for the reserved test unit DEMO.01.02.201 (reads 145 / 210 / 42), so the
+// polling-unit code on the sheet matches the chosen unit and review is not (rightly) blocked.
+const SHEET = path.join(__dirname, "synthetic-sheet-201.jpg");
+const SHEET_SHA256 = createHash("sha256").update(readFileSync(SHEET)).digest("hex");
 
 test.skip(process.env.POLLTRACE_E2E_LIVE_AI !== "1", "set POLLTRACE_E2E_LIVE_AI=1 (server needs a vision provider key)");
 
@@ -97,4 +102,14 @@ test("live AI: suggestions → person changes one value and ticks uncertain ones
   await expect(page.locator("#v1")).toContainText(/Read by .+ \(.+\) at/);
   await expect(page.locator("#v2")).toContainText("Changed from version 1 (AI suggestion)");
   await expect(page.locator("#v2")).toContainText(`Party C: AI suggested`);
+
+  // The stored original is byte-for-byte the uploaded file: AI reading used a separate copy.
+  const storedSha = await page.evaluate(async (id) => {
+    const res = await fetch(`/api/evidence/${id}/original`, { credentials: "same-origin" });
+    if (!res.ok) throw new Error(`original fetch ${res.status}`);
+    const digest = await crypto.subtle.digest("SHA-256", await res.arrayBuffer());
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  }, evidenceId);
+  expect(storedSha).toBe(SHEET_SHA256);
+  console.log(`[ai-live] evidence ${evidenceId}: stored original sha256 matches uploaded file`);
 });
