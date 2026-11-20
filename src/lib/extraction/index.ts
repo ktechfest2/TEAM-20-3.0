@@ -10,21 +10,33 @@ import type {
   ExtractionInput,
   ExtractRequestMode,
 } from "@/lib/contracts/trace";
-import {
-  adaptersFor,
-  DEMO_NOTICE,
-  ExtractionError,
-  MANUAL_NOTICE,
-  type Env,
-} from "./adapters";
+import { adaptersFor, DEMO_NOTICE, MANUAL_NOTICE, type Env } from "./adapters";
+import type { DetailedExtractionAdapter, VisionProvenance } from "./anthropic";
+import { ExtractionError } from "./errors";
 
-export { ExtractionError, type ExtractionErrorCode } from "./adapters";
+export { ExtractionError, type ExtractionErrorCode } from "./errors";
+export { makeAnalysisCopy, type AnalysisCopy, type AnalysisCopyMeta } from "./analysis-copy";
+
+export const REAL_VISION_NOTICE =
+  "Read by an AI model. Check every figure against the photo before confirming.";
+
+export interface ExtractionRun {
+  draft: ResultDraft;
+  modeUsed: ExtractionMode;
+  availableModes: ExtractionMode[];
+  notice: string;
+  /** Fields needing a human look (REAL_VISION only; [] for manual/demo). Never a score. */
+  uncertainFields: string[];
+  /** Who produced the draft (REAL_VISION only). */
+  provenance: VisionProvenance | null;
+  /** Validated model JSON + analysis-copy metadata (REAL_VISION only). Never keys or headers. */
+  rawModelOutput: unknown | null;
+}
 
 const MODE_ORDER: readonly ExtractionMode[] = ["REAL_VISION", "DEMO_FIXTURE", "MANUAL"];
 
 const NOTICES: Record<ExtractionMode, string> = {
-  REAL_VISION:
-    "Automatic reading: these figures were read by software and may be wrong. Check every figure against the photo.",
+  REAL_VISION: REAL_VISION_NOTICE,
   DEMO_FIXTURE: DEMO_NOTICE,
   MANUAL: MANUAL_NOTICE,
 };
@@ -129,12 +141,16 @@ function filterToRoster(
   return { entries: out, warnings };
 }
 
+function isDetailed(a: ExtractionAdapter): a is DetailedExtractionAdapter {
+  return typeof (a as Partial<DetailedExtractionAdapter>).extractDetailed === "function";
+}
+
 /** Test seam: same as runExtraction with injectable adapters. */
 export async function runExtractionWith(
   adapters: Record<ExtractionMode, ExtractionAdapter>,
   input: ExtractionInput,
   requested: ExtractRequestMode,
-): Promise<{ draft: ResultDraft; modeUsed: ExtractionMode; availableModes: ExtractionMode[]; notice: string }> {
+): Promise<ExtractionRun> {
   const modes = modesFrom(adapters, input);
   let mode: ExtractionMode;
   if (requested === "AUTO") {
@@ -154,7 +170,20 @@ export async function runExtractionWith(
     mode = requested;
   }
 
-  const raw: unknown = await adapters[mode].extract(input);
+  const adapter = adapters[mode];
+  let raw: unknown;
+  let uncertainFields: string[] = [];
+  let provenance: VisionProvenance | null = null;
+  let rawModelOutput: unknown | null = null;
+  if (isDetailed(adapter)) {
+    const detailed = await adapter.extractDetailed(input);
+    raw = detailed.draft;
+    uncertainFields = detailed.uncertainFields;
+    provenance = detailed.provenance;
+    rawModelOutput = detailed.rawModelOutput;
+  } else {
+    raw = await adapter.extract(input);
+  }
   const parsed = ResultDraft.safeParse(raw);
   if (!parsed.success) {
     throw new ExtractionError(
@@ -175,11 +204,20 @@ export async function runExtractionWith(
   for (const w of consistencyWarnings(base, input.pollingUnitCode)) {
     if (!warnings.includes(w)) warnings.push(w);
   }
+  if (mode === "REAL_VISION") {
+    // Roster parties the model did not read (or read unclearly) also need a human look.
+    const set = new Set(uncertainFields);
+    for (const e of base.entries) if (e.needsReview) set.add(e.partyCode);
+    uncertainFields = [...set];
+  }
   return {
     draft: { ...base, warnings },
     modeUsed: mode,
     availableModes: modes,
     notice: NOTICES[mode],
+    uncertainFields,
+    provenance,
+    rawModelOutput,
   };
 }
 
@@ -187,7 +225,7 @@ export async function runExtraction(
   input: ExtractionInput,
   requested: ExtractRequestMode,
   env: Env = defaultEnv(),
-): Promise<{ draft: ResultDraft; modeUsed: ExtractionMode; availableModes: ExtractionMode[]; notice: string }> {
+): Promise<ExtractionRun> {
   return runExtractionWith(adaptersFor(env), input, requested);
 }
 

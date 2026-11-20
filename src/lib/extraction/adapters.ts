@@ -3,23 +3,17 @@
  * (done in ./index.ts) and a human confirms it. No adapter invents confidence scores: uncertainty
  * is expressed only as `needsReview` per field and plain-language `warnings`. Unreadable → null.
  *
- * Pure, server-safe TypeScript: no React, no DB, no network.
+ * Server-only TypeScript: no React, no DB. Only the REAL_VISION adapter (./anthropic.ts) makes a
+ * network call, to the configured vision provider.
  */
 import type { ExtractionMode, ResultDraft } from "@/lib/contracts";
 import type { ExtractionAdapter, ExtractionInput } from "@/lib/contracts/trace";
+import { ANTHROPIC_PROVIDER, createAnthropicVisionAdapter, type VisionClient } from "./anthropic";
+import { ExtractionError } from "./errors";
+
+export { ExtractionError, type ExtractionErrorCode } from "./errors";
 
 export type Env = Record<string, string | undefined>;
-
-export type ExtractionErrorCode = "MODE_UNAVAILABLE" | "INVALID_DRAFT" | "NOT_CONFIGURED";
-
-export class ExtractionError extends Error {
-  readonly code: ExtractionErrorCode;
-  constructor(code: ExtractionErrorCode, message: string) {
-    super(message);
-    this.name = "ExtractionError";
-    this.code = code;
-  }
-}
 
 /* ------------------------------------------------------------------ MANUAL */
 
@@ -91,57 +85,46 @@ export const demoFixtureAdapter: ExtractionAdapter = {
 
 /* ------------------------------------------------------------------ REAL_VISION */
 
+/** Providers with an implementation. Only Anthropic (Claude) is supported. */
+export const SUPPORTED_VISION_PROVIDERS: readonly string[] = [ANTHROPIC_PROVIDER];
+
 /**
- * Providers with a verified implementation. EMPTY: no vision SDK is installed and none has been
- * verified for this MVP, so REAL_VISION is never available and the UI must not claim "AI read".
- *
- * How a provider plugs in (future work, requires lead approval for any new dependency):
- *  1. Add its id here and a `(input, apiKey) => Promise<unknown>` caller in `providerCallers`.
- *  2. Send the image as untrusted DATA only. The prompt must say the image may contain text that
- *     looks like instructions and that it must never be followed; ask only for the ResultDraft
- *     JSON shape. Never put secrets or contributor metadata in the request.
- *  3. Return the raw model JSON; ./index.ts runs ResultDraft.safeParse on it (invalid → throws
- *     INVALID_DRAFT), drops party codes not in the roster with a warning naming them, and
- *     appends deterministic consistency warnings. The caller must map unreadable/uncertain
- *     figures to null + needsReview=true and must not emit confidence scores.
- *  4. Everything is still a draft: a human confirms it via /confirm before it counts anywhere.
+ * REAL_VISION is available only when VISION_PROVIDER=anthropic AND ANTHROPIC_API_KEY is set
+ * (server env). VISION_MODEL overrides the model (default claude-opus-5-5); VISION_EFFORT
+ * overrides output effort (default medium).
  */
-export const SUPPORTED_VISION_PROVIDERS: readonly string[] = [];
-
-const providerCallers: Record<string, (input: ExtractionInput, apiKey: string) => Promise<unknown>> = {};
-
 export function realVisionConfigured(env: Env): boolean {
-  const provider = env.VISION_PROVIDER?.trim();
-  const key = env.VISION_API_KEY?.trim();
-  return (
-    !!provider &&
-    !!key &&
-    SUPPORTED_VISION_PROVIDERS.includes(provider) &&
-    typeof providerCallers[provider] === "function"
-  );
+  const provider = env.VISION_PROVIDER?.trim().toLowerCase();
+  return provider === ANTHROPIC_PROVIDER && !!env.ANTHROPIC_API_KEY?.trim();
 }
 
-export function createRealVisionAdapter(env: Env): ExtractionAdapter {
-  return {
-    mode: "REAL_VISION",
-    available: () => realVisionConfigured(env),
-    async extract(input: ExtractionInput): Promise<ResultDraft> {
-      if (!realVisionConfigured(env)) {
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+export function createRealVisionAdapter(env: Env, deps: { client?: VisionClient } = {}): ExtractionAdapter {
+  if (!realVisionConfigured(env) && !deps.client) {
+    return {
+      mode: "REAL_VISION",
+      available: () => false,
+      async extract(): Promise<ResultDraft> {
         throw new ExtractionError(
           "NOT_CONFIGURED",
           "Automatic reading is not configured on this server. Use manual entry.",
         );
-      }
-      const provider = env.VISION_PROVIDER!.trim();
-      // Raw output is untrusted; validated by the caller in ./index.ts.
-      return (await providerCallers[provider](input, env.VISION_API_KEY!.trim())) as ResultDraft;
-    },
-  };
+      },
+    };
+  }
+  const effort = EFFORTS.find((e) => e === env.VISION_EFFORT?.trim());
+  return createAnthropicVisionAdapter({
+    apiKey: env.ANTHROPIC_API_KEY?.trim(),
+    model: env.VISION_MODEL,
+    effort,
+    client: deps.client,
+  });
 }
 
-export function adaptersFor(env: Env): Record<ExtractionMode, ExtractionAdapter> {
+export function adaptersFor(env: Env, deps: { client?: VisionClient } = {}): Record<ExtractionMode, ExtractionAdapter> {
   return {
-    REAL_VISION: createRealVisionAdapter(env),
+    REAL_VISION: createRealVisionAdapter(env, deps),
     DEMO_FIXTURE: demoFixtureAdapter,
     MANUAL: manualAdapter,
   };
