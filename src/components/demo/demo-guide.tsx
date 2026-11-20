@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, CircleCheck, Clock, Download, FlaskConical, Lock, RotateCcw, TriangleAlert, WifiOff } from "lucide-react";
+import {
+  ArrowLeft,
+  CircleCheck,
+  Clock,
+  Download,
+  FlaskConical,
+  Lock,
+  RotateCcw,
+  TriangleAlert,
+  WifiOff,
+} from "lucide-react";
 import { DEMO_UNIT_ID, DemoState, type DemoStageId } from "@/lib/contracts/demo";
 import { DemoTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
@@ -28,8 +38,8 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     runs: (
       <>
         Runs the real upload (the server makes its own fingerprint), loads demo figures and confirms them, as{" "}
-        <strong>Synthetic Demo Witness 1</strong> and <strong>Synthetic Demo Witness 2</strong>. Each sends a
-        different synthetic sheet and confirms Party A 145, Party B 210, Party C 42.
+        <strong>Synthetic Demo Witness 1</strong> and <strong>Synthetic Demo Witness 2</strong>. Each sends a different
+        synthetic sheet and confirms Party A 145, Party B 210, Party C 42.
       </>
     ),
   },
@@ -38,8 +48,8 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     button: "Run: a copy is sent",
     runs: (
       <>
-        Runs the real upload as <strong>Synthetic Demo Witness 3</strong>, sending Witness 1&rsquo;s exact file.
-        The fingerprints match, so the copy is counted once, never as an extra witness.
+        Runs the real upload as <strong>Synthetic Demo Witness 3</strong>, sending Witness 1&rsquo;s exact file. The
+        fingerprints match, so the copy is counted once, never as an extra witness.
       </>
     ),
   },
@@ -48,8 +58,8 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     button: "Run: reviewer decides",
     runs: (
       <>
-        Runs the real review service as <strong>Synthetic Demo Reviewer A</strong>: accepts all three photos,
-        judges Witness 1 and Witness 2 independent, and leaves the copy from Witness 3 as &ldquo;not assessed&rdquo;.
+        Runs the real review service as <strong>Synthetic Demo Reviewer A</strong>: accepts all three photos, judges
+        Witness 1 and Witness 2 independent, and leaves the copy from Witness 3 as &ldquo;not assessed&rdquo;.
       </>
     ),
   },
@@ -58,16 +68,17 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     button: "Run: reference added and checked",
     runs: (
       <>
-        Runs the real reference import as <strong>Synthetic Demo Reviewer B</strong> (synthetic reference: Party A
-        145, Party B 270, Party C 42), then the real source check as <strong>Synthetic Demo Reviewer A</strong>, a
-        different reviewer.
+        Runs the real reference import as <strong>Synthetic Demo Reviewer B</strong> (synthetic reference: Party A 145,
+        Party B 270, Party C 42), then the real source check as <strong>Synthetic Demo Reviewer A</strong>, a different
+        reviewer.
       </>
     ),
   },
 };
 const ORDER: DemoStageId[] = ["WITNESSES", "DUPLICATE", "REVIEWS", "REFERENCE"];
 
-type Load = { status: "loading" } | { status: "ready"; demo: DemoState } | { status: "failed"; kind: "offline" | "error" };
+type Load =
+  { status: "loading" } | { status: "ready"; demo: DemoState } | { status: "failed"; kind: "offline" | "error" };
 type Failure = { stage: DemoStageId | "RESET"; message: string; passcode?: boolean };
 
 function readPass(): string {
@@ -137,7 +148,8 @@ export function DemoGuide() {
         message = "That passcode is not right. Nothing was run.";
         isPass = true;
       } else if (r.code === "DEMO_DISABLED") message = "Demo mode is not set up on this server.";
-      else if (r.code === "DEMO_STAGE_ORDER") message = "Run the earlier steps first. The list below has been refreshed.";
+      else if (r.code === "DEMO_STAGE_ORDER")
+        message = "Run the earlier steps first. The list below has been refreshed.";
       else if (r.status === 429) message = "Too many attempts. Wait a minute, then try again.";
       else if (r.status === 404) message = "This demo step is not available on this server.";
     }
@@ -154,8 +166,8 @@ export function DemoGuide() {
       </Link>
       <h1 className="mt-2 text-xl md:text-2xl">Guided demo</h1>
       <p className="mt-2">
-        One story in eight steps, about three minutes. Each step opens a real PollTrace screen or runs the real
-        services as a synthetic demo actor. Nothing here is a mock-up.
+        One story in eight steps, about three minutes. Each step opens a real PollTrace screen or runs the real services
+        as a synthetic demo actor. Nothing here is a mock-up.
       </p>
       <div className="mt-4 flex items-start gap-2 rounded-md border-2 border-dashed border-demo bg-demo-tint p-3 text-demo">
         <FlaskConical aria-hidden size={20} className="mt-0.5 shrink-0" />
@@ -314,45 +326,50 @@ export function DemoGuide() {
             <Stamp label={statusMeta.stamp} icon={statusMeta.icon} tone={statusMeta.tone} />
           </div>
         </div>
-        <div className="px-4 py-3">
-          <label htmlFor={`${uid}-pass`} className="font-bold">
-            Demo passcode
-          </label>
-          <p id={`${uid}-pass-hint`} className="text-sm text-ink-muted">
-            Needed for steps 4 to 7 and reset. Kept in this browser tab only, until you close it.
-          </p>
-          <input
-            ref={passRef}
-            id={`${uid}-pass`}
-            type="password"
-            autoComplete="off"
-            value={passcode}
-            disabled={disabled}
-            onChange={(e) => {
-              setPasscode(e.target.value);
-              try {
-                sessionStorage.setItem(PASS_KEY, e.target.value);
-              } catch {
-                /* storage blocked: the passcode stays in memory only */
-              }
-            }}
-            aria-invalid={failure?.passcode ? true : undefined}
-            aria-describedby={`${uid}-pass-hint${failure?.passcode ? ` ${uid}-pass-err` : ""}`}
-            className={`field mt-2 md:max-w-sm ${failure?.passcode ? "border-2 border-caution" : ""}`}
-          />
-          {failure?.passcode ? (
-            <p id={`${uid}-pass-err`} className="mt-1 text-caution">
-              {failure.message}
+        {disabled ? null : (
+          <div className="px-4 py-3">
+            <label htmlFor={`${uid}-pass`} className="font-bold">
+              Demo passcode
+            </label>
+            <p id={`${uid}-pass-hint`} className="text-sm text-ink-muted">
+              Needed for steps 4 to 7 and reset. Kept in this browser tab only, until you close it.
             </p>
-          ) : null}
-        </div>
+            <input
+              ref={passRef}
+              id={`${uid}-pass`}
+              type="password"
+              autoComplete="off"
+              value={passcode}
+              disabled={disabled}
+              onChange={(e) => {
+                setPasscode(e.target.value);
+                try {
+                  sessionStorage.setItem(PASS_KEY, e.target.value);
+                } catch {
+                  /* storage blocked: the passcode stays in memory only */
+                }
+              }}
+              aria-invalid={failure?.passcode ? true : undefined}
+              aria-describedby={`${uid}-pass-hint${failure?.passcode ? ` ${uid}-pass-err` : ""}`}
+              className={`field mt-2 md:max-w-sm ${failure?.passcode ? "border-2 border-caution" : ""}`}
+            />
+            {failure?.passcode ? (
+              <p id={`${uid}-pass-err`} className="mt-1 text-caution">
+                {failure.message}
+              </p>
+            ) : null}
+            <a href={`#${uid}-reset`} className="mt-2 inline-flex min-h-11 items-center font-bold text-primary">
+              Reset demo scenario
+            </a>
+          </div>
+        )}
       </section>
 
       <ol className="grid gap-8">
         <Beat n={1} title="A voter captures the result sheet offline">
           <p>
-            Open Capture on a phone, choose <span className="font-mono">{UNIT_CODE}</span>, and use the synthetic
-            sample sheet. Turn on airplane mode before you press &ldquo;Save this photo&rdquo;.
+            Open Capture on a phone, choose <span className="font-mono">{UNIT_CODE}</span>, and use the synthetic sample
+            sheet. Turn on airplane mode before you press &ldquo;Save this photo&rdquo;.
           </p>
           <BeatLinks>
             <Link href="/capture" className="btn btn-primary no-underline">
@@ -367,8 +384,8 @@ export function DemoGuide() {
 
         <Beat n={2} title="The original is kept and synced">
           <p>
-            The receipt shows the photo&rsquo;s fingerprint while still offline. Turn airplane mode off: the
-            submission changes to &ldquo;Received by server&rdquo; once the server&rsquo;s own fingerprint matches.
+            The receipt shows the photo&rsquo;s fingerprint while still offline. Turn airplane mode off: the submission
+            changes to &ldquo;Received by server&rdquo; once the server&rsquo;s own fingerprint matches.
           </p>
           <BeatLinks>
             <Link href="/submissions" className="btn btn-secondary no-underline">
@@ -380,8 +397,12 @@ export function DemoGuide() {
         <Beat n={3} title="The figures are confirmed by a person">
           <p>
             From the receipt, open the ProofTrail and choose &ldquo;Read the figures&rdquo;. &ldquo;Load demo
-            figures&rdquo; fills in figures labelled &ldquo;Demo figures — not read from this photo&rdquo;. Check
-            them against the photo and confirm.
+            figures&rdquo; fills in figures labelled &ldquo;Demo figures — not read from this photo&rdquo;. Check them
+            against the photo and confirm.
+          </p>
+          <p>
+            If &ldquo;Read the figures with AI&rdquo; is offered, use it and point out the AI SUGGESTION stamps. If not,
+            use &ldquo;Load demo figures&rdquo; and say AI reading is switched off on this server.
           </p>
           <BeatLinks>
             <Link href="/submissions" className="btn btn-secondary no-underline">
@@ -401,8 +422,8 @@ export function DemoGuide() {
         <Beat n={6} title={STAGES.REVIEWS.title}>
           {stageCard("REVIEWS")}
           <p className="mt-3 text-sm">
-            To show the review screens, sign in as Synthetic Demo Reviewer A after step 3 (this replaces the
-            contributor session in this browser).
+            To show the review screens, sign in as Synthetic Demo Reviewer A after step 3 (this replaces the contributor
+            session in this browser).
           </p>
           <BeatLinks>
             <Link href="/reviewer?next=/review" className="btn btn-secondary no-underline">
@@ -417,8 +438,8 @@ export function DemoGuide() {
 
         <Beat n={8} title="The ProofTrail explains the difference">
           <p>
-            The public comparison shows the difference (&ldquo;Reference is 60 higher&rdquo;) and why no allegation
-            is made. A witness ProofTrail shows each step that photo went through.
+            The public comparison shows the difference (&ldquo;Reference is 60 higher&rdquo;) and why no allegation is
+            made. A witness ProofTrail shows each step that photo went through.
           </p>
           <BeatLinks>
             <Link href={`/units/${DEMO_UNIT_ID}`} className="btn btn-primary no-underline">
@@ -440,9 +461,7 @@ export function DemoGuide() {
         <h2 id={`${uid}-reset`} className="text-xl">
           Reset demo scenario
         </h2>
-        <p className="mt-2">
-          Use this before each run so steps 4 to 7 start again from the beginning.
-        </p>
+        <p className="mt-2">Use this before each run so steps 4 to 7 start again from the beginning.</p>
         {resetDone ? (
           <p role="status" className="mt-3 flex items-start gap-3 rounded-md bg-success-tint p-3">
             <CircleCheck aria-hidden size={20} className="mt-0.5 shrink-0 text-success" />
@@ -466,22 +485,35 @@ export function DemoGuide() {
           <div className="mt-3 rounded-md border-2 border-caution bg-caution-tint p-4">
             <h3 className="text-lg font-bold">Reset the demo scenario?</h3>
             <p className="mt-2">
-              This removes only the records created by the synthetic demo actors (Witnesses 1 to 3 and Reviewers A
-              and B) on <span className="font-mono">{UNIT_CODE}</span>. Evidence from anyone else, including a photo
-              you captured live, is never changed or removed.
+              This removes only the records created by the synthetic demo actors (Witnesses 1 to 3 and Reviewers A and
+              B) on <span className="font-mono">{UNIT_CODE}</span>. Evidence from anyone else, including a photo you
+              captured live, is never changed or removed.
             </p>
             <div className="mt-4 flex flex-col gap-2 md:flex-row">
-              <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void call("RESET")}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy !== null}
+                onClick={() => void call("RESET")}
+              >
                 {busy === "RESET" ? "Resetting…" : "Reset now"}
               </button>
-              <button type="button" className="btn btn-secondary" disabled={busy !== null} onClick={() => setConfirmReset(false)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy !== null}
+                onClick={() => setConfirmReset(false)}
+              >
                 Keep everything
               </button>
             </div>
           </div>
         )}
         {failure?.stage === "RESET" && !failure.passcode ? (
-          <p role="alert" className="mt-3 flex items-start gap-2 rounded-md border-2 border-caution bg-caution-tint p-3">
+          <p
+            role="alert"
+            className="mt-3 flex items-start gap-2 rounded-md border-2 border-caution bg-caution-tint p-3"
+          >
             <TriangleAlert aria-hidden size={20} className="mt-0.5 shrink-0 text-caution" />
             <span>{failure.message}</span>
           </p>
@@ -515,7 +547,7 @@ function Beat({ n, title, children }: { n: number; title: string; children: Reac
           {title}
         </span>
       </h2>
-      <div className="mt-2 grid gap-2">{children}</div>
+      <div className="mt-2 grid gap-2 [&>p]:max-w-[68ch]">{children}</div>
     </li>
   );
 }
@@ -538,8 +570,10 @@ function StageResult({
 }) {
   const links: Array<{ href: string; label: string }> = [];
   if (id === "WITNESSES") {
-    if (demo.evidence.witness1) links.push({ href: `/evidence/${demo.evidence.witness1}`, label: "Witness 1 evidence" });
-    if (demo.evidence.witness2) links.push({ href: `/evidence/${demo.evidence.witness2}`, label: "Witness 2 evidence" });
+    if (demo.evidence.witness1)
+      links.push({ href: `/evidence/${demo.evidence.witness1}`, label: "Witness 1 evidence" });
+    if (demo.evidence.witness2)
+      links.push({ href: `/evidence/${demo.evidence.witness2}`, label: "Witness 2 evidence" });
   }
   if (id === "DUPLICATE" && demo.evidence.duplicate)
     links.push({ href: `/evidence/${demo.evidence.duplicate}`, label: "Witness 3 evidence (exact copy)" });
@@ -562,7 +596,9 @@ function StageResult({
             <li key={l.href}>
               <Link href={l.href} className="inline-flex min-h-11 items-center font-bold text-primary">
                 {l.label}
-                {l.href.startsWith("/evidence/") ? <span className="sr-only"> (opens for a reviewer session)</span> : null}
+                {l.href.startsWith("/evidence/") ? (
+                  <span className="sr-only"> (opens for a reviewer session)</span>
+                ) : null}
               </Link>
             </li>
           ))}

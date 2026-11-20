@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, CircleCheck, CloudOff, ExternalLink, WifiOff } from "lucide-react";
+import { ArrowLeft, CircleCheck, CloudOff, ExternalLink, TriangleAlert, WifiOff } from "lucide-react";
 import type { EvidenceTrace, ResultRevisionView, TraceEvent } from "@/lib/contracts/trace";
 import { DemoTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
@@ -19,6 +19,7 @@ import {
   type FigureKey,
 } from "@/components/evidence/figures";
 import { OriginalPhoto } from "@/components/evidence/original-photo";
+import { sheetCodeMismatch } from "@/components/evidence/pu-code";
 import { latestRevisionOf, useTrace } from "@/components/evidence/use-trace";
 import { fileLine, fmtTime, INDEPENDENCE_LINE, SOURCE_LONG } from "@/components/client/format";
 import { isReviewer, useSession } from "@/components/client/session";
@@ -215,6 +216,16 @@ function Trace({
                 {latest.humanConfirmed ? <span className="font-mono">{fmtTime(latest.createdAt)}</span> : null}
               </p>
               <AiBasis latest={latest} revisions={trace.revisions} />
+              {sheetCodeMismatch(latest.pollingUnitCodeOnSheet, e.pollingUnitCode) ? (
+                <p className="flex items-start gap-2 rounded-md border-2 border-caution bg-caution-tint p-3">
+                  <TriangleAlert aria-hidden size={20} className="mt-0.5 shrink-0 text-caution" />
+                  <span>
+                    The sheet shows a different polling-unit code (
+                    <span className="font-mono">{sheetCodeMismatch(latest.pollingUnitCodeOnSheet, e.pollingUnitCode)}</span>)
+                    from the unit chosen (<span className="font-mono">{e.pollingUnitCode}</span>). The unit is not changed.
+                  </span>
+                </p>
+              ) : null}
               <div className="slip px-4 py-2">
                 <FiguresTable revision={latest} />
               </div>
@@ -570,12 +581,21 @@ function AiDiff({ base, next }: { base: ResultRevisionView; next: ResultRevision
           <ul className="grid gap-1">
             {changed.map((c) => (
               <li key={c.k}>
-                {figureLabel(c.k)}: AI suggested{" "}
-                <span className="font-mono">
-                  <span className="sr-only">was </span>
-                  <s className="text-ink-muted">{show(c.before)}</s>
-                </span>{" "}
-                <span aria-hidden>→</span> confirmed <span className="font-mono">{show(c.after)}</span>
+                {c.before === null ? (
+                  <>
+                    {figureLabel(c.k)}: AI could not read it <span aria-hidden>→</span> typed{" "}
+                    <span className="font-mono">{show(c.after)}</span>
+                  </>
+                ) : (
+                  <>
+                    {figureLabel(c.k)}: AI suggested{" "}
+                    <span className="font-mono">
+                      <span className="sr-only">was </span>
+                      <s className="text-ink-muted">{show(c.before)}</s>
+                    </span>{" "}
+                    <span aria-hidden>→</span> confirmed <span className="font-mono">{show(c.after)}</span>
+                  </>
+                )}
               </li>
             ))}
           </ul>

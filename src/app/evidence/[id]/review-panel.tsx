@@ -10,6 +10,7 @@ import { apiJson, issueMessages } from "@/components/client/api";
 import { fmtTime } from "@/components/client/format";
 import { latestRevisionOf } from "@/components/evidence/use-trace";
 import { Choice } from "@/components/choice";
+import { sheetCodeMismatch } from "@/components/evidence/pu-code";
 
 const ReviewResponse = z.object({ review: ReviewEventView, status: EvidenceStatus });
 
@@ -60,7 +61,8 @@ const MAX_REASON = 2000;
 export function ReviewPanel({ trace, offline, onRecorded }: { trace: EvidenceTrace; offline: boolean; onRecorded: () => void }) {
   const { permissions, integrity, evidence } = trace;
   const latest = latestRevisionOf(trace);
-  const canAccept = Boolean(latest?.humanConfirmed);
+  const sheetMismatch = sheetCodeMismatch(latest?.pollingUnitCodeOnSheet, evidence.pollingUnitCode);
+  const canAccept = Boolean(latest?.humanConfirmed) && !sheetMismatch;
   const isCopy = integrity.exactDuplicateCount > 0;
   const uid = useId();
 
@@ -225,7 +227,13 @@ export function ReviewPanel({ trace, offline, onRecorded }: { trace: EvidenceTra
                 disabled={disabled}
                 onChange={() => setDecision(d.value)}
                 title={d.title}
-                text={disabled ? "Not available yet: no figures have been checked and confirmed by a person." : d.text}
+                text={
+                  !disabled
+                    ? d.text
+                    : !latest?.humanConfirmed
+                      ? "Not available yet: no figures have been checked and confirmed by a person."
+                      : `Not available: the sheet shows polling unit ${sheetMismatch}, not ${evidence.pollingUnitCode}.`
+                }
               />
             );
           })}

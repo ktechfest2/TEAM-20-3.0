@@ -107,11 +107,19 @@ export function ChangeList({ changes }: { changes: FieldChange[] }) {
       {changes.map((c) => (
         <li key={c.label}>
           {c.label}:{" "}
-          <span className="font-mono">
-            <span className="sr-only">was </span>
-            <s className="text-ink-muted">{c.before}</s> <span aria-hidden>→</span>
-            <span className="sr-only">, now</span> {c.after}
-          </span>
+          {c.before === "unreadable" ? (
+            // Nothing was read before, so there is nothing to strike through.
+            <>
+              not read <span aria-hidden>→</span>
+              <span className="sr-only">, now</span> <span className="font-mono">{c.after}</span>
+            </>
+          ) : (
+            <span className="font-mono">
+              <span className="sr-only">was </span>
+              <s className="text-ink-muted">{c.before}</s> <span aria-hidden>→</span>
+              <span className="sr-only">, now</span> {c.after}
+            </span>
+          )}
         </li>
       ))}
     </ul>

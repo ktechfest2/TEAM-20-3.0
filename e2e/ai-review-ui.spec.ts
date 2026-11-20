@@ -276,6 +276,29 @@ test.describe("AI reading UI states (mocked API, not live AI)", () => {
     await shot(page, "ai-6-evidence-confirmed");
   });
 
+  test("reviewer: Accept is blocked when the sheet shows a different polling-unit code", async ({ page }) => {
+    const m = await mockApi(page, (route) => route.abort());
+    m.revisions = [AI_REVISION, HUMAN_REVISION];
+    m.status = "PENDING_REVIEW";
+    await page.route(`**/api/evidence/${ID}/trace`, (r) => {
+      const t = trace(m.revisions, m.status);
+      return r.fulfill({
+        json: {
+          ...t,
+          viewer: "REVIEWER",
+          permissions: { ...t.permissions, canConfirm: false, canExtract: false, canReview: true, reviewBlockedReason: null },
+        },
+      });
+    });
+    await page.goto(`/evidence/${ID}#review`);
+    await expect(page.getByText(/The sheet shows a different polling-unit code \(DEMO\.01\.02\.210\)/)).toBeVisible();
+    await expect(page.getByRole("radio", { name: /Accept: usable in comparison/ })).toBeDisabled();
+    await expect(
+      page.getByText("Not available: the sheet shows polling unit DEMO.01.02.210, not DEMO.01.02.201."),
+    ).toBeVisible();
+    await shot(page, "ai-9-reviewer-pu-mismatch");
+  });
+
   test("stop waiting and type myself", async ({ page }) => {
     const m = await mockApi(page, async (route, mode) => {
       if (mode === "REAL_VISION") return extractOk(m, 60_000)(route); // never answers in time

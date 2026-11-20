@@ -377,7 +377,8 @@ function ModeStep({
       });
       if (r.ok) return onExtracted(r.data);
       const f = failureOf(r.kind === "http" ? r : { kind: r.kind });
-      if (f === "LIMIT") setAiHidden(true);
+      // No point offering AI again for this photo after these.
+      if (f === "LIMIT" || f === "UNSUPPORTED") setAiHidden(true);
       setFailure(f);
     } catch {
       /* aborted by "Stop and type myself": handled there */
@@ -399,7 +400,12 @@ function ModeStep({
   }
 
   const typeButton = (
-    <button type="button" className="btn btn-secondary" disabled={busy === "MANUAL"} onClick={() => typeMyself(false)}>
+    <button
+      type="button"
+      className={`btn ${failure && FAILURE_COPY[failure as Exclude<ModeFailure, "UNSUPPORTED">]?.retry ? "btn-secondary" : "btn-primary"}`}
+      disabled={busy === "MANUAL"}
+      onClick={() => typeMyself(false)}
+    >
       {busy === "MANUAL" ? "Preparing the form…" : "Type the figures myself"}
     </button>
   );
@@ -499,7 +505,10 @@ function ModeStep({
 
       {failure === "UNSUPPORTED" ? (
         <div role="alert" className="mt-4 rounded-md border-2 border-caution bg-surface p-4">
-          <p className="font-bold">The AI could not find result figures in this photo.</p>
+          <p className="flex items-start gap-2 font-bold">
+            <TriangleAlert aria-hidden size={20} className="mt-0.5 shrink-0 text-caution" />
+            The AI could not find result figures in this photo.
+          </p>
           <p className="mt-1">
             It may not be a result sheet, or it may be too blurred, dark or cut off. This does not change your photo or
             its fingerprint.
@@ -516,14 +525,17 @@ function ModeStep({
         </div>
       ) : failure ? (
         <div role="alert" className="mt-4 rounded-md border-2 border-caution bg-caution-tint p-4">
-          <p>
-            {FAILURE_COPY[failure].text} <strong>Nothing was saved.</strong>
+          <p className="flex items-start gap-2">
+            <TriangleAlert aria-hidden size={20} className="mt-0.5 shrink-0 text-caution" />
+            <span>
+              {FAILURE_COPY[failure].text} <strong>Nothing was saved.</strong>
+            </span>
           </p>
           <div className="mt-3 flex flex-col gap-2 md:flex-row">
             {FAILURE_COPY[failure].retry ? (
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn btn-primary"
                 disabled={busy !== null}
                 onClick={() => {
                   if (failure === "IN_PROGRESS") {
@@ -541,7 +553,8 @@ function ModeStep({
         </div>
       ) : null}
 
-      <div className="mt-6 grid gap-2 md:max-w-sm">
+      {/* While a failure panel is open its own buttons are the next step; the main button would compete. */}
+      <div className={`mt-6 grid gap-2 md:max-w-sm ${failure ? "hidden" : ""}`}>
         {manualOnly ? (
           <button type="button" className="btn btn-primary w-full" disabled={busy !== null || !online} onClick={() => void start("MANUAL")}>
             {busy ? "Preparing the form…" : "Start typing"}
@@ -586,6 +599,18 @@ function Radio({ name, checked, onChange, children }: { name: string; checked: b
 
 /* ------------------------------------------------------------------ step 2: enter */
 
+/** Same words, ignoring case, punctuation and spacing. */
+const sameText = (a: string, b: string) => {
+  const n = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return n(a) === n(b);
+};
+
+/** Server notices that only repeat this panel's heading and text (shown once, not twice). */
+const DUPLICATE_AI_NOTICES = [
+  "AI suggestions — check every number.",
+  "Read by an AI model. Check every figure against the photo before confirming.",
+];
+
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 function SourceNotice({ draft, latest }: { draft: Draft; latest: Revision }) {
@@ -605,7 +630,9 @@ function SourceNotice({ draft, latest }: { draft: Draft; latest: Revision }) {
           An AI model read the photo and suggested these figures. It can misread numbers. Compare each one with the
           photo, fix any that are wrong, then confirm.
         </p>
-        {draft.notice ? <p className="mt-1">{draft.notice}</p> : null}
+        {draft.notice && !DUPLICATE_AI_NOTICES.some((t) => sameText(draft.notice ?? "", t)) ? (
+          <p className="mt-1">{draft.notice}</p>
+        ) : null}
         {p ? (
           <p className="mt-1 text-sm text-ink-muted">
             Read by {p.model} at <span className="font-mono">{hhmm(p.extractedAt)}</span> · took{" "}
@@ -703,7 +730,7 @@ function EnterStep({
     <section aria-labelledby={`${uid}-h`}>
       <SourceNotice draft={draft} latest={latest} />
       <h1 id={`${uid}-h`} className="mt-4 text-xl md:text-2xl">
-        Type the figures
+        {isAiDraft(draft) ? "Check the AI’s figures" : "Type the figures"}
       </h1>
       <p className="mt-1 text-sm text-ink-muted">Step 2 of 3</p>
 
@@ -848,7 +875,7 @@ function UncertainCheck({ meta, onChange }: { meta: { checked: boolean }; onChan
           type="checkbox"
           checked={meta.checked}
           onChange={(e) => onChange(e.target.checked)}
-          className="size-5 accent-primary"
+          className="size-6 accent-primary"
         />
         I checked this on the photo
       </label>

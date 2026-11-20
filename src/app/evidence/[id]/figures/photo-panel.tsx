@@ -37,9 +37,9 @@ export function PhotoPanel({ src, synthetic, code }: { src: string; synthetic: b
         </a>
       </div>
       {hidden ? null : (
-        <div className="relative">
+        <div>
           <div
-            className="h-[clamp(120px,28dvh,240px)] overflow-auto rounded-lg border border-rule bg-sunken lg:h-[calc(100dvh-7rem)]"
+            className="h-[clamp(120px,28dvh,240px)] overflow-auto rounded-lg border border-rule bg-sunken lg:h-[calc(100dvh-10rem)]"
             style={{ touchAction: "pan-x pan-y pinch-zoom" }}
             tabIndex={0}
             role="region"
@@ -53,37 +53,40 @@ export function PhotoPanel({ src, synthetic, code }: { src: string; synthetic: b
               imgStyle={{ width: `${zoom * 100}%` }}
             />
           </div>
-          <div className="absolute right-2 bottom-2 flex gap-1 rounded-md border border-rule bg-surface p-0.5">
-            <button
-              type="button"
-              aria-label="Zoom out"
-              disabled={zoom <= 1}
-              onClick={() => setZoom((z) => Math.max(1, z - 1))}
-              className="inline-flex size-11 items-center justify-center rounded-md text-ink disabled:opacity-40"
-            >
-              <ZoomOut aria-hidden size={20} />
-            </button>
-            <button
-              type="button"
-              aria-label="Zoom in"
-              disabled={zoom >= max()}
-              onClick={() => setZoom((z) => Math.min(max(), z + 1))}
-              className="inline-flex size-11 items-center justify-center rounded-md text-ink disabled:opacity-40"
-            >
-              <ZoomIn aria-hidden size={20} />
-            </button>
-            <button
-              type="button"
-              aria-label="Fit"
-              onClick={() => setZoom(1)}
-              className="inline-flex size-11 items-center justify-center rounded-md text-ink"
-            >
-              <Maximize2 aria-hidden size={20} />
-            </button>
+          {/* Controls sit under the image, never over it, so they cannot hide figures on the sheet. */}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <p className="font-mono text-sm text-ink-muted" aria-live="polite">
+              Zoom {zoom * 100}%
+            </p>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                aria-label="Zoom out"
+                disabled={zoom <= 1}
+                onClick={() => setZoom((z) => Math.max(1, z - 1))}
+                className="inline-flex size-11 items-center justify-center rounded-md border border-rule bg-surface text-ink disabled:opacity-40"
+              >
+                <ZoomOut aria-hidden size={20} />
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                disabled={zoom >= max()}
+                onClick={() => setZoom((z) => Math.min(max(), z + 1))}
+                className="inline-flex size-11 items-center justify-center rounded-md border border-rule bg-surface text-ink disabled:opacity-40"
+              >
+                <ZoomIn aria-hidden size={20} />
+              </button>
+              <button
+                type="button"
+                aria-label="Fit"
+                onClick={() => setZoom(1)}
+                className="inline-flex size-11 items-center justify-center rounded-md border border-rule bg-surface text-ink"
+              >
+                <Maximize2 aria-hidden size={20} />
+              </button>
+            </div>
           </div>
-          <p className="sr-only" aria-live="polite">
-            Zoom {zoom * 100}%
-          </p>
         </div>
       )}
     </div>
