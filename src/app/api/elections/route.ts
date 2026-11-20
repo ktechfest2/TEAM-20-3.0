@@ -1,6 +1,7 @@
-import { ELECTIONS, SYNTHETIC_DISCLAIMER } from "@/lib/seed/registry";
+import { ELECTIONS } from "@/lib/seed/registry";
+import { describeRecords } from "@/lib/seed/disclaimer";
 
-/** Public. Synthetic demo registry only in this build. */
+/** Public. Each election carries its own `synthetic` flag; top-level fields describe the set. */
 export function GET() {
-  return Response.json({ data: ELECTIONS, synthetic: true, disclaimer: SYNTHETIC_DISCLAIMER });
+  return Response.json({ data: ELECTIONS, ...describeRecords(ELECTIONS) });
 }
