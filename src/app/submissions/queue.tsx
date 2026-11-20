@@ -58,7 +58,10 @@ export function Queue() {
   }
 
   const groups = ORDER.map((s) => ({ status: s, items: captures.filter((c) => c.status === s) }));
-  const pending = captures.filter((c) => c.status === "SAVED_LOCAL" || c.status === "NEEDS_ATTENTION").length;
+  // An unreadable original can never upload, so it is not "waiting".
+  const pending = captures.filter(
+    (c) => c.status === "SAVED_LOCAL" || (c.status === "NEEDS_ATTENTION" && c.lastError !== "UNREADABLE"),
+  ).length;
 
   return (
     <>
@@ -145,6 +148,7 @@ function Row({ capture: c, online }: { capture: LocalCapture; online: boolean })
   const reason = c.lastError as AttentionReason | null;
   const attention = c.status === "NEEDS_ATTENTION";
   const integrity = attention && reason === "HASH_MISMATCH";
+  const unreadable = attention && reason === "UNREADABLE";
 
   let detail: string;
   if (c.status === "SAVED_LOCAL") detail = online ? "Will upload shortly." : "Waiting for network.";
@@ -178,7 +182,19 @@ function Row({ capture: c, online }: { capture: LocalCapture; online: boolean })
       </div>
       <p className="mt-2">{detail}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        {attention || (c.status === "SAVED_LOCAL" && online) ? (
+        {unreadable ? (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              if (confirm("Remove this entry? The photo can no longer be read, so it cannot be uploaded. Capture it again if you still have the sheet.")) {
+                void getDB().captures.delete(c.id);
+              }
+            }}
+          >
+            Remove from this device
+          </button>
+        ) : attention || (c.status === "SAVED_LOCAL" && online) ? (
           <button
             type="button"
             className={`btn ${attention ? "btn-primary" : "btn-secondary"}`}

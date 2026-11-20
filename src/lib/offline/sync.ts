@@ -190,6 +190,6 @@ export const ATTENTION_COPY: Record<AttentionReason, string> = {
   HASH_MISMATCH: "The server's fingerprint did not match. Your original is still on this device.",
   UNAUTHORIZED: "The server did not accept this upload. Your photo is still saved on this device.",
   CONFLICT: "This receipt number was already used for a different photo. Your photo is still saved on this device.",
-  UNREADABLE: "This photo can no longer be read on this device. It has not been deleted.",
+  UNREADABLE: "This photo can no longer be read on this device, so it cannot be uploaded. Capture it again, then remove this entry.",
   REJECTED_FILE: "The server could not accept this file. Only JPG, PNG or WebP photos up to 15 MB can be sent.",
 };
