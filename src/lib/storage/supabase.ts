@@ -22,7 +22,8 @@ import type {
   RevisionRecord,
 } from "./types";
 import type { EvidenceStatus } from "@/lib/contracts";
-import { assertStagingKey, ImmutableObjectConflictError } from "./types";
+import { assertDemoOriginalKeys, assertStagingKey, ImmutableObjectConflictError } from "./types";
+import type { DemoResetResult } from "./types";
 
 export const EVIDENCE_BUCKET = "evidence-originals";
 const UNIQUE_VIOLATION = "23505";
@@ -365,6 +366,28 @@ class SupabaseRepository implements EvidenceRepository {
     if (error) throw new Error(`reference review insert failed: ${error.message}`);
   }
 
+  /** Scoped delete inside the reset_demo_scenario SECURITY DEFINER function (migration 0007). */
+  async resetDemoScenario(unitId: string, witnessIds: string[], reviewerIds: string[]): Promise<DemoResetResult> {
+    const { data, error } = await this.db.rpc("reset_demo_scenario", {
+      p_unit: unitId,
+      p_witness_ids: witnessIds,
+      p_reviewer_ids: reviewerIds,
+    });
+    if (error) throw new Error(`demo reset failed: ${error.message}`);
+    const d = (data ?? {}) as Record<string, unknown>;
+    const n = (k: string) => Number(d[k] ?? 0);
+    return {
+      evidence: n("evidence"),
+      revisions: n("revisions"),
+      entries: n("entries"),
+      reviews: n("reviews"),
+      audit: n("audit"),
+      references: n("references"),
+      referenceReviews: n("referenceReviews"),
+      originalPaths: Array.isArray(d.originalPaths) ? (d.originalPaths as unknown[]).map(String) : [],
+    };
+  }
+
   async listReferenceReviews(referenceIds: string[]) {
     if (referenceIds.length === 0) return [];
     const { data, error } = await this.db
@@ -425,6 +448,13 @@ class SupabaseObjectStore implements ObjectStore {
     assertStagingKey(key);
     const { error } = await this.db.storage.from(EVIDENCE_BUCKET).remove([key]);
     if (error) throw new Error(`staging remove failed: ${error.message}`);
+  }
+
+  async removeDemoOriginals(keys: string[], allowedContributorIds: string[]): Promise<void> {
+    assertDemoOriginalKeys(keys, allowedContributorIds);
+    if (keys.length === 0) return;
+    const { error } = await this.db.storage.from(EVIDENCE_BUCKET).remove(keys);
+    if (error) throw new Error(`demo original remove failed: ${error.message}`);
   }
 
   /**

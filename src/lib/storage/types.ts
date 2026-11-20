@@ -116,6 +116,18 @@ export interface ReferenceReviewRecord {
   createdAt: string;
 }
 
+/** Counts returned by the scoped demo reset (+ original object keys to remove afterwards). */
+export interface DemoResetResult {
+  evidence: number;
+  revisions: number;
+  entries: number;
+  reviews: number;
+  audit: number;
+  references: number;
+  referenceReviews: number;
+  originalPaths: string[];
+}
+
 export type InsertRevisionResult =
   | { inserted: true; record: RevisionRecord }
   /** unique(evidence_id, revision_number) taken: someone else wrote that number first. */
@@ -166,6 +178,13 @@ export interface EvidenceRepository {
   insertReferenceReview(record: ReferenceReviewRecord): Promise<void>;
   /** Ordered by createdAt ascending. */
   listReferenceReviews(referenceIds: string[]): Promise<ReferenceReviewRecord[]>;
+
+  /**
+   * DEMO ONLY. Deletes exactly: evidence on `unitId` by `witnessIds` (+ revisions, entries,
+   * reviews, audit rows) and SYNTHETIC_DEMO references on `unitId` created by `reviewerIds`
+   * (+ reference reviews and REFERENCE_* audit rows). Refuses non-synthetic units/actors/rows.
+   */
+  resetDemoScenario(unitId: string, witnessIds: string[], reviewerIds: string[]): Promise<DemoResetResult>;
 }
 
 export type PutResult = "CREATED" | "ALREADY_PRESENT_IDENTICAL";
@@ -190,6 +209,18 @@ export interface ObjectStore {
    * LOCAL_DEV returns null: the service issues a same-origin signed PUT route instead.
    */
   createStagingUploadTarget(key: string, mime: string): Promise<{ url: string; headers: Record<string, string> } | null>;
+  /**
+   * DEMO RESET ONLY. Removes original objects, and only keys of the exact form
+   * "originals/<allowedContributorId>/..." (throws otherwise, before removing anything).
+   */
+  removeDemoOriginals(keys: string[], allowedContributorIds: string[]): Promise<void>;
+}
+
+export function assertDemoOriginalKeys(keys: string[], allowedContributorIds: string[]): void {
+  for (const key of keys) {
+    const m = /^originals\/([0-9a-f-]{36})\/[0-9a-f-]{36}\/[0-9a-f]{64}\.(jpg|png|webp)$/.exec(key);
+    if (!m || !allowedContributorIds.includes(m[1])) throw new Error(`Refusing to remove non-demo original: ${key}`);
+  }
 }
 
 export const STAGING_PREFIX = "staging/";

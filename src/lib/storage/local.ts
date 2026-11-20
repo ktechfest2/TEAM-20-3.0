@@ -24,7 +24,9 @@ import type {
   RevisionRecord,
 } from "./types";
 import type { EvidenceStatus } from "@/lib/contracts";
-import { assertStagingKey, ImmutableObjectConflictError } from "./types";
+import { assertDemoOriginalKeys, assertStagingKey, ImmutableObjectConflictError, StorageConfigError } from "./types";
+import type { DemoResetResult } from "./types";
+import { findPollingUnit } from "@/lib/seed/registry";
 
 interface LocalDb {
   contributors: Record<string, ContributorRecord>;
@@ -266,6 +268,47 @@ class LocalRepository implements EvidenceRepository {
     });
   }
 
+  resetDemoScenario(unitId: string, witnessIds: string[], reviewerIds: string[]): Promise<DemoResetResult> {
+    return this.withLock<DemoResetResult>(async (db) => {
+      if (!findPollingUnit(unitId)?.synthetic) throw new StorageConfigError(`reset refused: ${unitId} is not a synthetic unit`);
+      for (const id of [...witnessIds, ...reviewerIds]) {
+        const c = db.contributors[id];
+        if (c && !c.synthetic) throw new StorageConfigError("reset refused: non-synthetic actor");
+      }
+      const evidence = Object.values(db.evidence).filter((e) => e.pollingUnitId === unitId && witnessIds.includes(e.contributorId));
+      if (evidence.some((e) => !e.synthetic)) throw new StorageConfigError("reset refused: non-synthetic evidence");
+      const evIds = new Set(evidence.map((e) => e.id));
+      const refs = (db.references ?? []).filter(
+        (r) => r.pollingUnitId === unitId && r.createdBy !== null && reviewerIds.includes(r.createdBy) && r.sourceType === "SYNTHETIC_DEMO",
+      );
+      if (refs.some((r) => !r.synthetic)) throw new StorageConfigError("reset refused: non-synthetic reference");
+      const refIds = new Set(refs.map((r) => r.id));
+
+      const revisions = (db.revisions ?? []).filter((r) => evIds.has(r.evidenceId));
+      const isRefAudit = (a: AuditEventRecord) =>
+        a.evidenceId === null &&
+        (a.eventType === "REFERENCE_IMPORTED" || a.eventType === "REFERENCE_REVIEWED") &&
+        refIds.has(String(a.metadata.referenceId));
+      const result: DemoResetResult = {
+        evidence: evidence.length,
+        revisions: revisions.length,
+        entries: revisions.reduce((n, r) => n + r.entries.length, 0),
+        reviews: (db.reviews ?? []).filter((r) => evIds.has(r.evidenceId)).length,
+        audit: db.audit.filter((a) => (a.evidenceId !== null && evIds.has(a.evidenceId)) || isRefAudit(a)).length,
+        references: refs.length,
+        referenceReviews: (db.referenceReviews ?? []).filter((r) => refIds.has(r.referenceId)).length,
+        originalPaths: evidence.map((e) => e.originalPath),
+      };
+      for (const id of evIds) delete db.evidence[id];
+      db.revisions = (db.revisions ?? []).filter((r) => !evIds.has(r.evidenceId));
+      db.reviews = (db.reviews ?? []).filter((r) => !evIds.has(r.evidenceId));
+      db.audit = db.audit.filter((a) => !((a.evidenceId !== null && evIds.has(a.evidenceId)) || isRefAudit(a)));
+      db.references = (db.references ?? []).filter((r) => !refIds.has(r.id));
+      db.referenceReviews = (db.referenceReviews ?? []).filter((r) => !refIds.has(r.referenceId));
+      return { result, write: true };
+    });
+  }
+
   listReferenceReviews(referenceIds: string[]) {
     return this.withLock(async (db) => ({
       result: clone(
@@ -318,6 +361,11 @@ class LocalObjectStore implements ObjectStore {
   async removeStaging(key: string): Promise<void> {
     assertStagingKey(key);
     await rm(safeObjectPath(this.root, key), { force: true });
+  }
+
+  async removeDemoOriginals(keys: string[], allowedContributorIds: string[]): Promise<void> {
+    assertDemoOriginalKeys(keys, allowedContributorIds);
+    for (const key of keys) await rm(safeObjectPath(this.root, key), { force: true });
   }
 
   async createStagingUploadTarget(key: string): Promise<null> {
