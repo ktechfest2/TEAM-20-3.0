@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CircleCheck, CircleDashed, Copy, FileQuestion, User, WifiOff } from "lucide-react";
+import { CircleCheck, CircleDashed, ScanText, Copy, FileQuestion, User, WifiOff } from "lucide-react";
 import { ReviewQueueResponse, type ReviewQueueItem } from "@/lib/contracts/trace";
 import { DemoTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
@@ -199,6 +199,9 @@ function UnitCell({ item }: { item: ReviewQueueItem }) {
 function FiguresCell({ item }: { item: ReviewQueueItem }) {
   const r = item.latestRevision;
   if (!r) return <Stamp small label="No figures yet" icon={FileQuestion} tone="outline" />;
+  if (!r.humanConfirmed && r.origin === "REAL_VISION") {
+    return <Stamp small label="AI suggestion, not confirmed" icon={ScanText} tone="outline" />;
+  }
   if (!r.humanConfirmed) {
     return (
       <span className="flex flex-wrap items-center gap-2">

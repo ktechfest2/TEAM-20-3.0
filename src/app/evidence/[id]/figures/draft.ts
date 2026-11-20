@@ -2,6 +2,11 @@
  * Local draft of the figures a person is typing. Lives in this browser only (localStorage) so a
  * refresh or going offline never loses typing. It is never a server record: nothing is confirmed
  * until POST /confirm returns a revision.
+ *
+ * AI drafts (REAL_VISION): each AI value is a suggestion. The draft remembers the AI's value
+ * (`aiValue`) so the UI can say "Changed by you (AI suggested …)", and which fields the AI was not
+ * sure about (`uncertain`), each of which needs an "I checked this on the photo" tick (`checked`)
+ * before the check step. Editing a value clears its tick.
  */
 import type { ConfirmRequest, ResultRevisionView, RevisionOrigin } from "@/lib/contracts/trace";
 import type { FormType } from "@/lib/contracts";
@@ -13,9 +18,18 @@ export type FieldDraft = {
   unreadable: boolean;
   /** Pre-filled from the synthetic demo fixture and not changed since. */
   fromDemo: boolean;
-  /** The source revision marked this one as uncertain. */
+  /** The source revision (demo/manual) marked this one as needing a look. */
   flagged: boolean;
+  /** The AI's suggested value for this field (string form), or null when not an AI draft / AI read nothing. */
+  aiValue: string | null;
+  /** The AI was not sure about this field. */
+  uncertain: boolean;
+  /** The person ticked "I checked this on the photo". */
+  checked: boolean;
 };
+
+/** Sheet-detail fields can also be uncertain in an AI draft. */
+export type MetaDraft = { aiValue: string | null; uncertain: boolean; checked: boolean };
 
 export type Draft = {
   basedOnRevision: number;
@@ -23,6 +37,8 @@ export type Draft = {
   formType: FormType;
   code: string;
   fields: Record<FigureKey, FieldDraft>;
+  formTypeMeta: MetaDraft;
+  codeMeta: MetaDraft;
   note: string;
   /** Notice string from ExtractResponse, shown verbatim. Null when the draft started from a stored revision. */
   notice: string | null;
@@ -30,6 +46,17 @@ export type Draft = {
 };
 
 const KEY = (id: string) => `polltrace:figures-draft:${id}`;
+const NO_META: MetaDraft = { aiValue: null, uncertain: false, checked: false };
+
+/** Older drafts (saved before AI fields existed) get safe defaults. */
+function normalise(d: Draft): Draft {
+  const fields = {} as Record<FigureKey, FieldDraft>;
+  for (const k of FIGURE_KEYS) {
+    const f = d.fields[k] as Partial<FieldDraft> & Pick<FieldDraft, "value" | "unreadable" | "fromDemo" | "flagged">;
+    fields[k] = { ...f, aiValue: f.aiValue ?? null, uncertain: f.uncertain ?? false, checked: f.checked ?? false };
+  }
+  return { ...d, fields, formTypeMeta: d.formTypeMeta ?? NO_META, codeMeta: d.codeMeta ?? NO_META };
+}
 
 export function loadDraft(id: string): Draft | null {
   try {
@@ -38,7 +65,7 @@ export function loadDraft(id: string): Draft | null {
     const d = JSON.parse(raw) as Draft;
     if (typeof d?.basedOnRevision !== "number" || !d.fields) return null;
     for (const k of FIGURE_KEYS) if (!d.fields[k]) return null;
-    return d;
+    return normalise(d);
   } catch {
     return null;
   }
@@ -62,9 +89,13 @@ export function clearDraft(id: string) {
   }
 }
 
+export const isAiDraft = (d: Draft) => d.baseOrigin === "REAL_VISION";
+
 export function draftFromRevision(r: ResultRevisionView, notice: string | null): Draft {
-  // A MANUAL draft is an empty form: blank, not "unreadable". Elsewhere null means unreadable.
-  const blankMeansEmpty = r.origin === "MANUAL";
+  const ai = r.origin === "REAL_VISION" && !r.humanConfirmed;
+  // MANUAL and AI drafts leave unread fields blank (to type), not "unreadable". Elsewhere null = unreadable.
+  const blankMeansEmpty = r.origin === "MANUAL" || ai;
+  const uncertainSet = new Set(ai ? r.uncertainFields : []);
   const fields = {} as Record<FigureKey, FieldDraft>;
   for (const k of FIGURE_KEYS) {
     const v = figureValue(r, k);
@@ -73,7 +104,10 @@ export function draftFromRevision(r: ResultRevisionView, notice: string | null):
       value: v === null ? "" : String(v),
       unreadable: v === null && !blankMeansEmpty,
       fromDemo: r.origin === "DEMO_FIXTURE" && v !== null,
-      flagged: Boolean(entry?.needsReview && v !== null && !r.humanConfirmed),
+      flagged: !ai && Boolean(entry?.needsReview && v !== null && !r.humanConfirmed),
+      aiValue: ai && v !== null ? String(v) : null,
+      uncertain: ai && (uncertainSet.has(k) || Boolean(entry?.needsReview && v !== null)),
+      checked: false,
     };
   }
   return {
@@ -82,6 +116,10 @@ export function draftFromRevision(r: ResultRevisionView, notice: string | null):
     formType: r.formType,
     code: r.pollingUnitCodeOnSheet ?? "",
     fields,
+    formTypeMeta: ai ? { aiValue: r.formType, uncertain: uncertainSet.has("formType"), checked: false } : NO_META,
+    codeMeta: ai
+      ? { aiValue: r.pollingUnitCodeOnSheet, uncertain: uncertainSet.has("pollingUnitCode"), checked: false }
+      : NO_META,
     note: "",
     notice,
     savedAt: new Date().toISOString(),
@@ -96,17 +134,32 @@ export function fieldNumber(f: FieldDraft): number | null {
   return DIGITS.test(v) ? Number(v) : null;
 }
 
-export type Problem = { key: FigureKey; message: string };
+/** An AI value the person changed (compared as typed, ignoring surrounding spaces). */
+export const changedFromAi = (f: FieldDraft) => f.aiValue !== null && (f.unreadable || f.value.trim() !== f.aiValue);
 
-/** Fields that block moving to Check: blank-and-not-unreadable, or not digits. */
+/** Uncertain AI field that still needs the "I checked this on the photo" tick. */
+export const needsTick = (f: FieldDraft) =>
+  f.uncertain && f.aiValue !== null && !f.checked && !f.unreadable && !changedFromAi(f);
+
+export type ProblemKey = FigureKey | "formType" | "pollingUnitCode";
+export type Problem = { key: ProblemKey; message: string };
+
+const tickMessage = (label: string) => `Check ${label} against the photo, then tick “I checked this on the photo”.`;
+
+/** Fields that block moving to Check. */
 export function blockingProblems(d: Draft): Problem[] {
   const out: Problem[] = [];
+  if (d.formTypeMeta.uncertain && !d.formTypeMeta.checked && d.formType === d.formTypeMeta.aiValue)
+    out.push({ key: "formType", message: tickMessage("Form type") });
+  if (d.codeMeta.uncertain && !d.codeMeta.checked && d.code.trim() !== "" && d.code.trim() === (d.codeMeta.aiValue ?? ""))
+    out.push({ key: "pollingUnitCode", message: tickMessage("Polling unit code on the sheet") });
   for (const k of FIGURE_KEYS) {
     const f = d.fields[k];
     if (f.unreadable) continue;
     const v = f.value.trim();
     if (v === "") out.push({ key: k, message: `${figureLabel(k)} is empty. Type the number, or tick “I can't read this”.` });
     else if (!DIGITS.test(v)) out.push({ key: k, message: `${figureLabel(k)}: use numbers only (0–9).` });
+    else if (needsTick(f)) out.push({ key: k, message: tickMessage(figureLabel(k)) });
   }
   return out;
 }
@@ -134,7 +187,7 @@ export function consistencyChecks(d: Draft, unitCode: string): string[] {
   const code = d.code.trim();
   if (code && code.toUpperCase() !== unitCode.toUpperCase()) {
     out.push(
-      `The code on the sheet (${code}) is not the same as the polling unit you chose (${unitCode}). Check that this is the right sheet. You can still continue.`,
+      `The sheet shows a different polling-unit code (${code}) from the unit you chose (${unitCode}). The unit is not changed. Check that you photographed the right sheet.`,
     );
   }
   return out;

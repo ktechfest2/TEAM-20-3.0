@@ -12,7 +12,7 @@ import { refreshSession, signOut, useSession } from "@/components/client/session
 import { getDB } from "@/lib/offline/db";
 import { useOnline } from "@/lib/offline/use-network";
 
-type Failure = "wrongPasscode" | "notSetUp" | "disabled" | "network" | "other" | null;
+type Failure = "wrongPasscode" | "notSetUp" | "disabled" | "rateLimited" | "network" | "other" | null;
 
 const REVIEWERS = [
   { value: "A", name: "Synthetic Demo Reviewer A" },
@@ -125,13 +125,13 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
       return;
     }
     setBusy(false);
-    const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
-    const msg = body?.error?.message ?? "";
-    if (res.status === 403 && body?.error?.code === "DEMO_REVIEWERS_DISABLED") {
-      // The server uses one code for three cases; tell them apart without echoing server text.
-      if (/passcode must be set/i.test(msg)) setFailure("notSetUp");
-      else if (/invalid .*passcode/i.test(msg)) setFailure("wrongPasscode");
-      else setFailure("disabled");
+    const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
+    const code = body?.error?.code;
+    if (code === "DEMO_REVIEWER_PASSCODE_INVALID") setFailure("wrongPasscode");
+    else if (code === "RATE_LIMITED" || res.status === 429) setFailure("rateLimited");
+    else if (code === "DEMO_REVIEWERS_DISABLED") {
+      // The server reported demo reviewers as enabled, yet refused: it is missing its passcode setup.
+      setFailure(s?.demoReviewersEnabled ? "notSetUp" : "disabled");
     } else setFailure("other");
   }
 
@@ -261,6 +261,8 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
         <div aria-live="polite" className="mt-4">
           {failure === "network" ? (
             <p role="alert">Could not reach the server. Try again.</p>
+          ) : failure === "rateLimited" ? (
+            <p role="alert">Too many attempts. Wait a minute, then try again.</p>
           ) : failure === "notSetUp" ? (
             <p role="alert">Reviewer sign-in is not set up on this server yet.</p>
           ) : failure === "other" || (failure === "wrongPasscode" && !passcodeRequired) ? (

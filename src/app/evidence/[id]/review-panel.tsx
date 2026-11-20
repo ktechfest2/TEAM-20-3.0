@@ -52,6 +52,7 @@ type Outcome =
   | { kind: "selfReview" }
   | { kind: "sessionEnded" }
   | { kind: "invalid"; message: string }
+  | { kind: "puMismatch"; sheetCode: string; registryCode: string }
   | { kind: "network" };
 
 const MAX_REASON = 2000;
@@ -127,6 +128,14 @@ export function ReviewPanel({ trace, offline, onRecorded }: { trace: EvidenceTra
     if (r.kind === "network") return setOutcome({ kind: "network" });
     if (r.kind === "http" && r.code === "SELF_REVIEW") return setOutcome({ kind: "selfReview" });
     if (r.kind === "http" && (r.status === 401 || r.status === 403)) return setOutcome({ kind: "sessionEnded" });
+    if (r.kind === "http" && r.code === "PU_CODE_MISMATCH") {
+      const e = (r.body as { error?: { sheetCode?: unknown; registryCode?: unknown } } | null)?.error;
+      return setOutcome({
+        kind: "puMismatch",
+        sheetCode: typeof e?.sheetCode === "string" ? e.sheetCode : "?",
+        registryCode: typeof e?.registryCode === "string" ? e.registryCode : evidence.pollingUnitCode,
+      });
+    }
     if (r.kind === "http" && r.code === "NO_CONFIRMED_REVISION")
       return setOutcome({ kind: "invalid", message: "no figures have been checked and confirmed by a person" });
     const msgs = r.kind === "http" ? issueMessages(r.body) : [];
@@ -325,6 +334,12 @@ export function ReviewPanel({ trace, offline, onRecorded }: { trace: EvidenceTra
           {outcome.kind === "network" ? (
             <p role="alert" className="mt-3">
               Could not reach the server. Nothing was recorded. Your choices are kept. Try again.
+            </p>
+          ) : outcome.kind === "puMismatch" ? (
+            <p role="alert" className="mt-3">
+              The sheet&rsquo;s polling-unit code (<span className="font-mono">{outcome.sheetCode}</span>) differs from
+              this unit (<span className="font-mono">{outcome.registryCode}</span>). Flag it or do not accept; accepting
+              is blocked.
             </p>
           ) : outcome.kind === "invalid" ? (
             <p role="alert" className="mt-3">

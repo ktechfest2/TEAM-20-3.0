@@ -8,7 +8,16 @@ import type { EvidenceTrace, ResultRevisionView, TraceEvent } from "@/lib/contra
 import { DemoTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { DecisionStamp, DuplicateStamp, EvidenceStatusStamp, IntegrityStamp, OriginStamp } from "@/components/evidence/stamps";
-import { ChangeList, diffRevisions, FiguresTable, Warnings } from "@/components/evidence/figures";
+import {
+  ChangeList,
+  diffRevisions,
+  FIGURE_KEYS,
+  figureLabel,
+  figureValue,
+  FiguresTable,
+  Warnings,
+  type FigureKey,
+} from "@/components/evidence/figures";
 import { OriginalPhoto } from "@/components/evidence/original-photo";
 import { latestRevisionOf, useTrace } from "@/components/evidence/use-trace";
 import { fileLine, fmtTime, INDEPENDENCE_LINE, SOURCE_LONG } from "@/components/client/format";
@@ -205,6 +214,7 @@ function Trace({
                   : "Not confirmed by a person yet. Not used in any comparison."}
                 {latest.humanConfirmed ? <span className="font-mono">{fmtTime(latest.createdAt)}</span> : null}
               </p>
+              <AiBasis latest={latest} revisions={trace.revisions} />
               <div className="slip px-4 py-2">
                 <FiguresTable revision={latest} />
               </div>
@@ -266,7 +276,7 @@ function Trace({
           )}
         </section>
 
-        <Timeline events={trace.timeline} />
+        <Timeline events={trace.timeline} revisions={trace.revisions} />
 
         <p>
           <Link href={`/units/${e.pollingUnitId}`} className="btn btn-secondary w-full no-underline md:w-auto">
@@ -307,7 +317,10 @@ function NextStep({
     text = "Next: read the figures on the photo so they can be compared.";
     action = { label: "Read the figures", href: `/evidence/${e.id}/figures` };
   } else if (latest && !latest.humanConfirmed && permissions.canConfirm) {
-    text = "Next: check the figures against the photo and confirm them.";
+    text =
+      latest.origin === "REAL_VISION"
+        ? "Next: check the AI’s suggested figures against the photo and confirm them."
+        : "Next: check the figures against the photo and confirm them.";
     action = { label: "Check and confirm figures", href: `/evidence/${e.id}/figures?step=enter` };
   } else if (latest?.humanConfirmed && e.status === "PENDING_REVIEW") {
     text = "Figures confirmed. A reviewer will look at this next. You do not need to do anything.";
@@ -454,7 +467,14 @@ function Versions({ revisions }: { revisions: ResultRevisionView[] }) {
             const base = baseNo ? byNumber.get(baseNo) : undefined;
             const changes = base ? diffRevisions(base, r) : [];
             const who =
-              r.origin === "REAL_VISION" || r.origin === "DEMO_FIXTURE" ? "System" : r.createdByViewer ? "You" : "Contributor";
+              r.origin === "REAL_VISION"
+                ? "AI model"
+                : r.origin === "DEMO_FIXTURE"
+                  ? "System"
+                  : r.createdByViewer
+                    ? "You"
+                    : "Contributor";
+            const baseIsAi = base?.origin === "REAL_VISION" && r.origin === "HUMAN_CORRECTION";
             return (
               <li key={r.id} id={`v${r.revisionNumber}`} className="grid scroll-mt-4 gap-2 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -464,8 +484,27 @@ function Versions({ revisions }: { revisions: ResultRevisionView[] }) {
                 <p className="text-sm text-ink-muted">
                   {who} · <span className="font-mono">{fmtTime(r.createdAt)}</span>
                 </p>
+                {r.provenance ? (
+                  <p className="text-sm text-ink-muted">
+                    Read by {r.provenance.model} ({r.provenance.provider}) at{" "}
+                    <span className="font-mono">{fmtTime(r.provenance.extractedAt)}</span> · took{" "}
+                    <span className="font-mono">{Math.max(1, Math.round(r.provenance.durationMs / 1000))}</span> s
+                  </p>
+                ) : null}
+                {r.origin === "REAL_VISION" && r.uncertainFields.length ? (
+                  <p className="text-sm">The AI was not sure about: {r.uncertainFields.map(uncertainLabel).join(", ")}.</p>
+                ) : null}
+                {r.origin === "REAL_VISION" && r.warnings.length ? (
+                  <ul className="grid gap-1 text-sm">
+                    {r.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 {r.note ? <blockquote className="italic">“{r.note}”</blockquote> : null}
-                {!baseNo ? (
+                {baseIsAi && base ? (
+                  <AiDiff base={base} next={r} />
+                ) : !baseNo ? (
                   <p className="text-sm">First version.</p>
                 ) : (
                   <div className="rounded-md bg-sunken p-3">
@@ -492,6 +531,65 @@ function Versions({ revisions }: { revisions: ResultRevisionView[] }) {
   );
 }
 
+/** Label for an `uncertainFields` key; unknown keys are shown as given. */
+function uncertainLabel(key: string): string {
+  if (key === "formType") return "Form type";
+  if (key === "pollingUnitCode") return "Polling unit code on the sheet";
+  return (FIGURE_KEYS as string[]).includes(key) ? figureLabel(key as FigureKey) : key;
+}
+
+const numberChanges = (base: ResultRevisionView, next: ResultRevisionView) =>
+  FIGURE_KEYS.map((k) => ({ k, before: figureValue(base, k), after: figureValue(next, k) }));
+
+/** Under the figures: how the confirmed version relates to the AI suggestion it started from. */
+function AiBasis({ latest, revisions }: { latest: ResultRevisionView; revisions: ResultRevisionView[] }) {
+  if (latest.origin !== "HUMAN_CORRECTION" || !latest.basedOnRevision) return null;
+  const base = revisions.find((r) => r.revisionNumber === latest.basedOnRevision);
+  if (!base || base.origin !== "REAL_VISION") return null;
+  const all = numberChanges(base, latest);
+  const k = all.filter((c) => c.before !== c.after).length;
+  return (
+    <p className="text-sm text-ink-muted">
+      Based on an AI suggestion (version <span className="font-mono">{base.revisionNumber}</span>).{" "}
+      <span className="font-mono">{k}</span> of <span className="font-mono">{all.length}</span> numbers changed by the
+      person.
+    </p>
+  );
+}
+
+function AiDiff({ base, next }: { base: ResultRevisionView; next: ResultRevisionView }) {
+  const all = numberChanges(base, next);
+  const changed = all.filter((c) => c.before !== c.after);
+  const kept = all.filter((c) => c.before === c.after);
+  const show = (v: number | null) => (v === null ? "unreadable" : String(v));
+  return (
+    <div className="rounded-md bg-sunken p-3">
+      <p className="text-sm font-bold">Changed from version {base.revisionNumber} (AI suggestion)</p>
+      {changed.length ? (
+        <>
+          <ul className="grid gap-1">
+            {changed.map((c) => (
+              <li key={c.k}>
+                {figureLabel(c.k)}: AI suggested{" "}
+                <span className="font-mono">
+                  <span className="sr-only">was </span>
+                  <s className="text-ink-muted">{show(c.before)}</s>
+                </span>{" "}
+                <span aria-hidden>→</span> confirmed <span className="font-mono">{show(c.after)}</span>
+              </li>
+            ))}
+          </ul>
+          {kept.length ? (
+            <p className="mt-1 text-sm">Kept as suggested: {kept.map((c) => figureLabel(c.k)).join(", ")}.</p>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-sm">No numbers changed. All AI suggestions were kept after checking.</p>
+      )}
+    </div>
+  );
+}
+
 const EVENT_LABEL: Record<TraceEvent["type"], string> = {
   CAPTURE_CLAIMED: "Photo taken",
   RECEIVED: "Received",
@@ -500,7 +598,8 @@ const EVENT_LABEL: Record<TraceEvent["type"], string> = {
   REVIEW: "Review",
 };
 
-function Timeline({ events }: { events: TraceEvent[] }) {
+function Timeline({ events, revisions }: { events: TraceEvent[]; revisions: ResultRevisionView[] }) {
+  const aiVersions = new Set(revisions.filter((r) => r.origin === "REAL_VISION").map((r) => String(r.revisionNumber)));
   return (
     <section aria-labelledby="timeline-h">
       <h2 id="timeline-h" className="text-xl">
@@ -525,7 +624,8 @@ function Timeline({ events }: { events: TraceEvent[] }) {
                   )}
                 </p>
                 <p>
-                  <strong>{EVENT_LABEL[ev.type]}.</strong> {ev.summary}
+                  <strong>{ev.type === "EXTRACTION" && ev.ref && aiVersions.has(ev.ref) ? "AI suggestion" : EVENT_LABEL[ev.type]}.</strong>{" "}
+                  {ev.summary}
                 </p>
                 {versionRef ? (
                   <a href={`#v${versionRef}`} className="inline-flex min-h-11 items-center font-bold text-primary">
