@@ -267,8 +267,13 @@ describe("fixture: corroborated-and-reference-discrepancy (+60)", () => {
     expect(blocked.headers.get("retry-after")).toBeTruthy();
   });
 
-  it("public verification: 400 without electionId, 404 unknown unit, works with no evidence", async () => {
-    expect((await verificationRoute(json("/api/units/demo-pu-012/verification", null), ctx("demo-pu-012"))).status).toBe(400);
+  it("public verification: electionId optional, mismatch 400, 404 unknown unit, works with no evidence", async () => {
+    const own = await verificationRoute(json("/api/units/demo-pu-201/verification", null), ctx("demo-pu-201"));
+    expect(own.status).toBe(200);
+    expect((await own.json()).electionId).toBe("demo-election");
+    const mismatch = await verificationRoute(json("/api/units/demo-pu-201/verification?electionId=ng-2023-presidential", null), ctx("demo-pu-201"));
+    expect(mismatch.status).toBe(400);
+    expect((await mismatch.json()).error.code).toBe("UNIT_ELECTION_MISMATCH");
     expect((await verificationRoute(json("/x?electionId=demo-election", null), ctx("demo-pu-999"))).status).toBe(404);
     const empty = await verification("demo-pu-201");
     expect(empty.status).toBe("NO_EVIDENCE");

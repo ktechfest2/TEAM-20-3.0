@@ -234,6 +234,8 @@ export interface EvidenceStorage {
   mode: StorageMode;
   repo: EvidenceRepository;
   objects: ObjectStore;
+  /** LOCAL_DEV: resolves once the historical reference sample is seeded. Await before reading references. */
+  ready?: Promise<unknown>;
 }
 
 export class StorageConfigError extends Error {

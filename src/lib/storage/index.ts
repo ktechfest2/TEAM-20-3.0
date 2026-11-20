@@ -8,6 +8,7 @@
 import path from "node:path";
 import { createLocalStorage } from "./local";
 import { createSupabaseStorage } from "./supabase";
+import { importHistoricalNg2023 } from "@/lib/references/historical";
 import { StorageConfigError, type EvidenceStorage, type StorageMode } from "./types";
 
 export * from "./types";
@@ -48,12 +49,29 @@ export function createStorage(env: Env = process.env): EvidenceStorage {
 // Survive Next dev HMR module reloads (keeps the in-process lock single).
 const g = globalThis as unknown as { __polltraceStorage?: EvidenceStorage };
 
+/**
+ * LOCAL_DEV seeds the 2023 historical reference sample once per process (idempotent), so local dev
+ * and E2E see the same references as SUPABASE (where supabase/admin/import-ng2023.mjs does it).
+ * Off under vitest unless POLLTRACE_SEED_HISTORICAL=1; POLLTRACE_SEED_HISTORICAL=0 disables it.
+ */
+export function shouldSeedHistorical(env: Env = process.env): boolean {
+  if (env.POLLTRACE_SEED_HISTORICAL === "1") return true;
+  if (env.POLLTRACE_SEED_HISTORICAL === "0") return false;
+  return env.NODE_ENV !== "test";
+}
+
 export function getStorage(): EvidenceStorage {
   if (!g.__polltraceStorage) {
-    g.__polltraceStorage = createStorage();
-    if (g.__polltraceStorage.mode === "LOCAL_DEV") {
+    const storage = createStorage();
+    if (storage.mode === "LOCAL_DEV") {
       console.warn(`[polltrace] Evidence storage mode LOCAL_DEV at ${localDataDir()} (not remote storage).`);
+      if (shouldSeedHistorical()) {
+        storage.ready = importHistoricalNg2023(storage).catch((err) => {
+          console.error("[polltrace] historical sample seed failed", err);
+        });
+      }
     }
+    g.__polltraceStorage = storage;
   }
   return g.__polltraceStorage;
 }

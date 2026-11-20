@@ -2,12 +2,16 @@
 import type { EvidenceStatus, ResultField } from "@/lib/contracts";
 import type { ResultRevisionView, ReviewEventView } from "@/lib/contracts/trace";
 import { PARTY_ROSTER } from "@/lib/seed/registry";
+import { NG2023_PARTY_ROSTER } from "@/lib/seed/historical-ng2023";
+
+/** Display order only (no election context here): each roster keeps its own order. */
+const DISPLAY_ORDER: readonly string[] = [...PARTY_ROSTER, ...NG2023_PARTY_ROSTER];
 import type { ReviewEventRecord, RevisionRecord } from "@/lib/storage";
 
 /** Stable entry order: roster order first, then anything else alphabetically. */
 export function orderEntries(entries: ResultField[]): ResultField[] {
   const rank = (code: string) => {
-    const i = (PARTY_ROSTER as readonly string[]).indexOf(code);
+    const i = DISPLAY_ORDER.indexOf(code);
     return i < 0 ? Number.MAX_SAFE_INTEGER : i;
   };
   return [...entries].sort((a, b) => rank(a.partyCode) - rank(b.partyCode) || a.partyCode.localeCompare(b.partyCode));

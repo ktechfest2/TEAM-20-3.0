@@ -17,7 +17,7 @@ import {
 } from "@/lib/contracts/trace";
 import { reviewerRef, type Principal } from "@/lib/auth/session";
 import { availableModes, consistencyWarnings, ExtractionError, normalisePollingUnitCode, runExtraction, validateConfirm, type ExtractionRun } from "@/lib/extraction";
-import { findPollingUnit, PARTY_ROSTER } from "@/lib/seed/registry";
+import { findPollingUnit, partyRosterFor } from "@/lib/seed/registry";
 import type { EvidenceRecord, EvidenceStorage, RevisionRecord } from "@/lib/storage";
 import { evidenceNotFound, loadVisibleEvidence, reviewersOnly, unauthenticated } from "./access";
 import type { RateLimiter } from "./rate-limit";
@@ -361,7 +361,7 @@ export async function extractEvidence(p: Principal | null, id: string, body: unk
         mime: evidence.mime,
         synthetic: evidence.synthetic,
         pollingUnitCode: unit?.code ?? evidence.pollingUnitId,
-        partyRoster: PARTY_ROSTER,
+        partyRoster: partyRosterFor(evidence.electionId),
       },
       requested,
       ...envArgs,
@@ -473,7 +473,7 @@ export async function confirmEvidence(p: Principal | null, id: string, body: unk
     });
   }
 
-  const checked = validateConfirm(req, PARTY_ROSTER);
+  const checked = validateConfirm(req, partyRosterFor(evidence.electionId));
   if (!checked.ok) return fail(400, "INVALID_FIGURES", "Some figures need fixing before they can be confirmed.", { issues: checked.issues });
 
   const unit = findPollingUnit(evidence.pollingUnitId);

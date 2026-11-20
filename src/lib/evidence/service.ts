@@ -6,7 +6,8 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { EvidenceReceipt, EvidenceUploadMeta, MAX_ORIGINAL_BYTES } from "@/lib/contracts";
-import { findElection, findPollingUnit } from "@/lib/seed/registry";
+import { electionForUnit, findElection, findPollingUnit } from "@/lib/seed/registry";
+import { NG2023_ELECTION_ID } from "@/lib/seed/historical-ng2023";
 import type { Principal } from "@/lib/auth/session";
 import type { EvidenceRecord, EvidenceStorage, StorageMode } from "@/lib/storage";
 import type { RateLimiter } from "./rate-limit";
@@ -105,9 +106,16 @@ export function invalid(code: string, message: string, error: { issues: Array<{ 
   });
 }
 
+/** Where NEW evidence may be filed: known election + unit, the unit's own election, never historical. */
 export function checkRegistry(electionId: string, pollingUnitId: string): ServiceResult | null {
   if (!findElection(electionId)) return fail(400, "UNKNOWN_ELECTION", "Unknown electionId.");
   if (!findPollingUnit(pollingUnitId)) return fail(400, "UNKNOWN_POLLING_UNIT", "Unknown pollingUnitId.");
+  if (electionId === NG2023_ELECTION_ID) {
+    return fail(400, "HISTORICAL_ELECTION_READ_ONLY", "The 2023 historical sample is reference data only; new evidence cannot be filed against it.");
+  }
+  if (electionForUnit(pollingUnitId) !== electionId) {
+    return fail(400, "UNIT_ELECTION_MISMATCH", "This polling unit does not belong to that election.");
+  }
   return null;
 }
 
@@ -134,9 +142,11 @@ export async function commitVerifiedEvidence(
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? randomUUID;
 
-  const election = findElection(meta.electionId);
-  const unit = findPollingUnit(meta.pollingUnitId);
-  if (!election || !unit) return checkRegistry(meta.electionId, meta.pollingUnitId)!;
+  // Re-checked here so a finalize with an intent issued before a rule change is still refused.
+  const registryError = checkRegistry(meta.electionId, meta.pollingUnitId);
+  if (registryError) return registryError;
+  const election = findElection(meta.electionId)!;
+  const unit = findPollingUnit(meta.pollingUnitId)!;
 
   if (!bytes || bytes.byteLength === 0) return fail(400, "MISSING_FILE", "A non-empty file is required.");
   if (bytes.byteLength > MAX_ORIGINAL_BYTES) return fileTooLarge();

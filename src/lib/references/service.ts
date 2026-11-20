@@ -11,7 +11,7 @@ import { ReferenceRequest } from "@/lib/contracts";
 import { ReferenceReviewRequest, type ReferenceView, type UnitVerification, type VerificationEvidenceInput, type VerificationReferenceInput } from "@/lib/contracts/verification";
 import { reviewerRef, unitVerificationRef, type Principal } from "@/lib/auth/session";
 import { computeVerification } from "@/lib/verification";
-import { findElection, findPollingUnit, PARTY_ROSTER } from "@/lib/seed/registry";
+import { electionForUnit, findElection, findPollingUnit, partyRosterFor } from "@/lib/seed/registry";
 import type { EvidenceRecord, ReferenceRecord, ReferenceReviewRecord, ReviewEventRecord, RevisionRecord } from "@/lib/storage";
 import { reviewersOnly, unauthenticated } from "@/lib/evidence/access";
 import { UUID_RE } from "@/lib/evidence/http";
@@ -95,11 +95,15 @@ export async function importReference(p: Principal | null, body: unknown, deps: 
   if (!election) return fail(400, "UNKNOWN_ELECTION", "Unknown electionId.");
   const unit = findPollingUnit(req.pollingUnitId);
   if (!unit) return fail(400, "UNKNOWN_POLLING_UNIT", "Unknown pollingUnitId.");
+  if (electionForUnit(unit.id) !== election.id) {
+    return fail(400, "UNIT_ELECTION_MISMATCH", "This polling unit does not belong to that election.");
+  }
+  await deps.storage.ready; // LOCAL_DEV historical seed (versions must not collide)
 
   const urlProblem = sourceUrlProblem(req.sourceUrl);
   if (urlProblem) return fail(400, "INVALID_SOURCE_URL", urlProblem);
 
-  const roster = PARTY_ROSTER as readonly string[];
+  const roster = partyRosterFor(election.id);
   const parties = Object.keys(req.figures);
   const unknown = parties.filter((k) => !roster.includes(k));
   if (parties.length === 0) return fail(400, "INVALID_FIGURES", "A reference needs at least one party figure.");
@@ -207,10 +211,13 @@ export async function reviewReference(p: Principal | null, referenceId: string, 
 
 /* ------------------------------------------------------------------ reads */
 
+/** electionId is optional: omitted -> the unit's own election; given but different -> 400. */
 function resolveUnit(unitId: string, electionId: string | null): ServiceResult | { electionId: string; pollingUnitId: string } {
-  if (!electionId) return fail(400, "MISSING_ELECTION", "Query parameter electionId is required.");
-  if (!findElection(electionId)) return fail(404, "UNKNOWN_ELECTION", "Unknown election.");
   if (!findPollingUnit(unitId)) return fail(404, "UNKNOWN_POLLING_UNIT", "Unknown polling unit.");
+  const own = electionForUnit(unitId);
+  if (electionId === null || electionId === "") return { electionId: own, pollingUnitId: unitId };
+  if (!findElection(electionId)) return fail(404, "UNKNOWN_ELECTION", "Unknown election.");
+  if (electionId !== own) return fail(400, "UNIT_ELECTION_MISMATCH", "This polling unit does not belong to that election.");
   return { electionId, pollingUnitId: unitId };
 }
 
@@ -219,6 +226,7 @@ export async function listUnitReferences(p: Principal | null, unitId: string, el
   if (p.role !== "REVIEWER") return reviewersOnly();
   const unit = resolveUnit(unitId, electionId);
   if ("status" in unit) return unit;
+  await deps.storage.ready;
   const refs = await deps.storage.repo.listReferences(unit.electionId, unit.pollingUnitId);
   const reviews = await deps.storage.repo.listReferenceReviews(refs.map((r) => r.id));
   return { status: 200, body: refs.map((r) => toReferenceView(r, reviews, p.contributorId)) };
@@ -260,6 +268,7 @@ export function toEvidenceInput(
 export async function getUnitVerification(unitId: string, electionId: string | null, deps: WorkflowDeps): Promise<ServiceResult> {
   const unit = resolveUnit(unitId, electionId);
   if ("status" in unit) return unit;
+  await deps.storage.ready;
   const { repo } = deps.storage;
 
   const evidence = await repo.listEvidenceForUnit(unit.electionId, unit.pollingUnitId);
@@ -295,7 +304,7 @@ export async function getUnitVerification(unitId: string, electionId: string | n
   const result: UnitVerification = computeVerification({
     electionId: unit.electionId,
     pollingUnitId: unit.pollingUnitId,
-    partyRoster: [...PARTY_ROSTER],
+    partyRoster: [...partyRosterFor(unit.electionId)],
     evidence: evidence.map((e) =>
       toEvidenceInput(
         e,

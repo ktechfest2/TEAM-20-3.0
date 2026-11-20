@@ -181,8 +181,11 @@ describe("versions and derived sourceVerified", () => {
     expect(refAudit[2].metadata).toMatchObject({ decision: "SOURCE_REJECTED", reviewStateAfter: "REJECTED", sourceVerifiedAfter: false });
   });
 
-  it("list: 400 without electionId, 404 unknown unit", async () => {
-    expect((await listUnitReferences(revA, "demo-pu-012", null, deps())).status).toBe(400);
+  it("list: electionId optional (unit's own election); mismatch 400; unknown unit 404", async () => {
+    expect((await listUnitReferences(revA, "demo-pu-012", null, deps())).status).toBe(200);
+    const mismatch = await listUnitReferences(revA, "demo-pu-012", "ng-2023-presidential", deps());
+    expect(mismatch.status).toBe(400);
+    expect(code(mismatch)).toBe("UNIT_ELECTION_MISMATCH");
     expect((await listUnitReferences(revA, "demo-pu-999", "demo-election", deps())).status).toBe(404);
   });
 });
