@@ -12,7 +12,14 @@ export type CaptureStatus = "SAVED_LOCAL" | "UPLOADING" | "RECEIVED" | "NEEDS_AT
 export interface LocalCapture {
   /** clientSubmissionId: stable idempotency key, created once, never regenerated. */
   id: string;
-  blob: Blob;
+  /**
+   * The original bytes. Stored as an ArrayBuffer, not a Blob/File: WebKit (iOS Safari) keeps a
+   * File picked from the gallery only as a reference to a temporary file, which becomes unreadable
+   * later ("This photo can no longer be read on this device"). An ArrayBuffer is copied in full.
+   */
+  bytes?: ArrayBuffer;
+  /** Legacy records saved before bytes were stored directly. Read via captureBlob(). */
+  blob?: Blob;
   sha256: string;
   mime: string;
   sizeBytes: number;
@@ -66,15 +73,27 @@ export interface SaveCaptureInput {
   synthetic: boolean;
 }
 
-/** Hash, then persist original bytes + id + hash. Returns the stored record after read-back. */
+/** The stored original as a Blob (works for current and legacy records). */
+export function captureBlob(c: Pick<LocalCapture, "bytes" | "blob" | "mime">): Blob {
+  if (c.bytes) return new Blob([c.bytes], { type: c.mime });
+  if (c.blob) return c.blob;
+  throw new Error("No stored photo bytes");
+}
+
+/**
+ * Copy the original bytes out of the picked file, hash them, persist bytes + id + hash, then read the
+ * record back and re-hash the STORED bytes. Success is reported only if the persisted copy is
+ * readable and identical.
+ */
 export async function saveCapture(input: SaveCaptureInput, db: PollTraceDB = getDB()): Promise<LocalCapture> {
-  const sha256 = await sha256Hex(input.blob);
+  const bytes = await input.blob.arrayBuffer();
+  const sha256 = await sha256Hex(bytes);
   const record: LocalCapture = {
     id: crypto.randomUUID(),
-    blob: input.blob,
+    bytes,
     sha256,
     mime: input.blob.type || "application/octet-stream",
-    sizeBytes: input.blob.size,
+    sizeBytes: bytes.byteLength,
     fileName: input.fileName,
     electionId: input.electionId,
     pollingUnitId: input.pollingUnitId,
@@ -93,7 +112,7 @@ export async function saveCapture(input: SaveCaptureInput, db: PollTraceDB = get
     throw e;
   }
   const stored = await db.captures.get(record.id);
-  if (!stored || stored.sha256 !== sha256 || stored.blob.size !== input.blob.size) {
+  if (!stored?.bytes || stored.bytes.byteLength !== bytes.byteLength || (await sha256Hex(stored.bytes)) !== sha256) {
     throw new Error("The photo could not be saved on this device.");
   }
   return stored;

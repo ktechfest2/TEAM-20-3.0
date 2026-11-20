@@ -9,7 +9,7 @@
  * server returns a receipt whose sha256 equals ours.
  */
 import { EvidenceReceipt, UploadInitResponse } from "@/lib/contracts";
-import { getDB, type LocalCapture, type PollTraceDB } from "./db";
+import { captureBlob, getDB, type LocalCapture, type PollTraceDB } from "./db";
 
 export type AttentionReason =
   | "NETWORK"
@@ -102,7 +102,7 @@ async function directUpload(c: LocalCapture): Promise<Outcome> {
   const put = await fetch(target.uploadUrl, {
     method: "PUT",
     headers: target.uploadHeaders,
-    body: c.blob,
+    body: captureBlob(c),
     credentials: "omit",
   });
   if (put.status === 413) return { kind: "attention", reason: "REJECTED_FILE" };
@@ -145,7 +145,7 @@ export async function uploadCapture(id: string, db: PollTraceDB = getDB()): Prom
 
     // Make sure the original bytes are still readable before sending.
     try {
-      await c.blob.slice(0, 1).arrayBuffer();
+      await captureBlob(c).slice(0, 1).arrayBuffer();
     } catch {
       await db.captures.update(id, { status: "NEEDS_ATTENTION", lastError: "UNREADABLE" });
       return;

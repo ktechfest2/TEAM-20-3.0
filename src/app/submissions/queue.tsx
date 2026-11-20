@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { WifiOff } from "lucide-react";
 import { CaptureStamp, CAPTURE_STAMP } from "@/components/stamp";
-import { getDB, type CaptureStatus, type LocalCapture } from "@/lib/offline/db";
+import { captureBlob, getDB, type CaptureStatus, type LocalCapture } from "@/lib/offline/db";
 import { receiptNumber, shortFingerprint } from "@/lib/offline/hash";
 import { ATTENTION_COPY, syncAll, uploadCapture, type AttentionReason } from "@/lib/offline/sync";
 import { useOnline } from "@/lib/offline/use-network";
@@ -115,14 +115,22 @@ export function Queue() {
   );
 }
 
-function Thumb({ blob }: { blob: Blob }) {
+function Thumb({ capture }: { capture: LocalCapture }) {
   // Decorative thumbnail of the local original; the row text carries the meaning.
   const ref = useRef<HTMLSpanElement>(null);
+  const { bytes, blob, mime } = capture;
   useEffect(() => {
-    const u = URL.createObjectURL(blob);
-    if (ref.current) ref.current.style.backgroundImage = `url("${u}")`;
-    return () => URL.revokeObjectURL(u);
-  }, [blob]);
+    let u: string | null = null;
+    try {
+      u = URL.createObjectURL(captureBlob({ bytes, blob, mime }));
+      if (ref.current) ref.current.style.backgroundImage = `url("${u}")`;
+    } catch {
+      /* unreadable original: keep the plain placeholder square */
+    }
+    return () => {
+      if (u) URL.revokeObjectURL(u);
+    };
+  }, [bytes, blob, mime]);
   return (
     <span
       ref={ref}
@@ -153,7 +161,7 @@ function Row({ capture: c, online }: { capture: LocalCapture; online: boolean })
       }`}
     >
       <div className="flex gap-3">
-        <Thumb blob={c.blob} />
+        <Thumb capture={c} />
         <div className="min-w-0 flex-1">
           <p className="font-mono font-semibold">{unit?.code ?? c.pollingUnitId}</p>
           <p>

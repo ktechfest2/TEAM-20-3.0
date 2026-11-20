@@ -21,6 +21,8 @@ export default defineConfig({
   },
   projects: [
     { name: "mobile-360", use: { ...devices["Pixel 5"], viewport: { width: 360, height: 740 } } },
+    // Opt-in Safari engine check (iPhone): POLLTRACE_E2E_WEBKIT=1 npx playwright test --project=iphone-webkit
+    ...(process.env.POLLTRACE_E2E_WEBKIT === "1" ? [{ name: "iphone-webkit", use: { ...devices["iPhone 13"] } }] : []),
   ],
   webServer: remote
     ? undefined

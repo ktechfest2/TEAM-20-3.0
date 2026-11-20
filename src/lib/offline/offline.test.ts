@@ -83,7 +83,11 @@ describe("saveCapture", () => {
     const reopened = new PollTraceDB(db.name);
     const again = await reopened.captures.get(rec.id);
     expect(again?.sha256).toBe(rec.sha256);
-    expect(new Uint8Array(await again!.blob.arrayBuffer())).toEqual(PNG);
+    // Stored as raw bytes (ArrayBuffer), never as a Blob/File reference: iOS Safari loses File
+    // references kept in IndexedDB ("This photo can no longer be read on this device").
+    expect(again!.bytes).toBeInstanceOf(ArrayBuffer);
+    expect(again!.blob).toBeUndefined();
+    expect(new Uint8Array(again!.bytes!)).toEqual(PNG);
     reopened.close();
   });
 
@@ -140,7 +144,7 @@ describe("direct-to-storage sync", () => {
     await uploadCapture(rec.id, db);
     const after = await db.captures.get(rec.id);
     expect(after).toMatchObject({ status: "NEEDS_ATTENTION", lastError: "HASH_MISMATCH", serverReceipt: null });
-    expect(after?.blob.size).toBe(PNG.length); // original never deleted
+    expect(after?.bytes?.byteLength).toBe(PNG.length); // original never deleted
   });
 
   it.each([
