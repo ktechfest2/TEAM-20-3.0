@@ -13,6 +13,25 @@ export function orderEntries(entries: ResultField[]): ResultField[] {
   return [...entries].sort((a, b) => rank(a.partyCode) - rank(b.partyCode) || a.partyCode.localeCompare(b.partyCode));
 }
 
+/** raw_extraction written by extractEvidence: { draft, uncertainFields, provider?, model?, extractedAt?, durationMs?, modelOutput? }. */
+function uncertainFieldsFrom(raw: unknown): string[] {
+  const v = (raw as { uncertainFields?: unknown } | null)?.uncertainFields;
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+function provenanceFrom(raw: unknown): ResultRevisionView["provenance"] {
+  const r = raw as { provider?: unknown; model?: unknown; extractedAt?: unknown; durationMs?: unknown } | null;
+  if (!r || typeof r.provider !== "string" || typeof r.model !== "string" || typeof r.extractedAt !== "string") return null;
+  const at = Date.parse(r.extractedAt);
+  if (Number.isNaN(at)) return null;
+  return {
+    provider: r.provider,
+    model: r.model,
+    extractedAt: new Date(at).toISOString(),
+    durationMs: typeof r.durationMs === "number" && r.durationMs >= 0 ? Math.round(r.durationMs) : 0,
+  };
+}
+
 export function toRevisionView(r: RevisionRecord, viewerId: string): ResultRevisionView {
   return {
     id: r.id,
@@ -26,9 +45,8 @@ export function toRevisionView(r: RevisionRecord, viewerId: string): ResultRevis
     rejectedVotes: r.rejectedVotes,
     validVotes: r.validVotes,
     warnings: [...r.warnings],
-    // Filled from stored extraction metadata by the real-vision slice (evidence-backend).
-    uncertainFields: [],
-    provenance: null,
+    uncertainFields: r.origin === "HUMAN_CORRECTION" ? [] : uncertainFieldsFrom(r.rawExtraction),
+    provenance: r.origin === "REAL_VISION" ? provenanceFrom(r.rawExtraction) : null,
     humanConfirmed: r.humanConfirmed,
     basedOnRevision: r.basedOnRevision,
     note: r.note,

@@ -6,9 +6,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, beforeEach } from "vitest";
 import { sha256HexNode } from "@/lib/evidence/service";
 import { resetStorageForTests } from "@/lib/storage";
+import { resetIpLimitersForTests } from "@/lib/evidence/rate-limit";
 import { POST as createSession } from "@/app/api/session/route";
 import { POST as demoReviewerLogin } from "@/app/api/session/demo-reviewer/route";
 import { POST as postEvidence } from "@/app/api/evidence/route";
@@ -121,6 +122,8 @@ const verification = async (unit: string, cookie: string | null = null) => {
   return r.json();
 };
 
+beforeEach(() => resetIpLimitersForTests());
+
 describe("fixture: corroborated-and-reference-discrepancy (+60)", () => {
   it("matches the local fixture values when present", () => {
     const f = path.join(process.cwd(), "fixtures", "demo_cases.json");
@@ -212,6 +215,56 @@ describe("fixture: corroborated-and-reference-discrepancy (+60)", () => {
     expect(v.status).not.toBe("REFERENCE_DISCREPANCY");
     expect(v.reference).toMatchObject({ reviewState: "REJECTED", sourceVerified: false });
     expect(v.differenceUnconfirmed).toBe(true);
+  });
+
+  it("ATTACK: a newer unreviewed version from one reviewer cannot hide a confirmed discrepancy", async () => {
+    const unit = "demo-pu-007";
+    const [w1, w2, revA, revB] = [await phone(), await phone(), await reviewer("A"), await reviewer("B")];
+    await accept(revA, await witness(w1, unit, "atk-A"));
+    await accept(revA, await witness(w2, unit, "atk-B"));
+    const v1 = await importReference(revB, unit);
+    await reviewRefRoute(json("/x", revA, "POST", { decision: "SOURCE_CONFIRMED", reason: "provenance checked" }), ctx(v1.id));
+    expect((await verification(unit)).status).toBe("REFERENCE_DISCREPANCY");
+
+    // Reviewer B imports v2 identical to the witnesses, never reviewed.
+    const v2r = await importRefRoute(
+      json("/api/references", revB, "POST", {
+        electionId: "demo-election",
+        pollingUnitId: unit,
+        sourceType: "SYNTHETIC_DEMO",
+        sourceDescription: "Newer synthetic reference, unreviewed",
+        figures: WITNESS,
+        synthetic: true,
+      }),
+    );
+    const v2 = await v2r.json();
+    expect(v2.version).toBe(2);
+    const v = await verification(unit);
+    expect(v.status).toBe("REFERENCE_DISCREPANCY");
+    expect(v.reference).toMatchObject({ id: v1.id, version: 1, reviewState: "CONFIRMED" });
+    expect(v.differences.find((d: { partyCode: string }) => d.partyCode === "PARTY_B").referenceMinusWitness).toBe(60);
+
+    // Reviewers can see the pending newer version.
+    const list = await (await unitRefsRoute(json(`/api/units/${unit}/references?electionId=demo-election`, revA), ctx(unit))).json();
+    expect(list.map((r: { version: number; reviewState: string }) => [r.version, r.reviewState])).toEqual([[1, "CONFIRMED"], [2, "NOT_REVIEWED"]]);
+
+    // Only when a second reviewer confirms v2 does the comparison move to it.
+    await reviewRefRoute(json("/x", revA, "POST", { decision: "SOURCE_CONFIRMED", reason: "newer source checked" }), ctx(v2.id));
+    const after = await verification(unit);
+    expect(after.reference.version).toBe(2);
+    expect(after.status).not.toBe("REFERENCE_DISCREPANCY");
+  });
+
+  it("public verification is rate limited per IP (60/min)", async () => {
+    const hit = () =>
+      verificationRoute(
+        new Request(`${BASE}/api/units/demo-pu-201/verification?electionId=demo-election`, { headers: { "x-vercel-forwarded-for": "203.0.113.77" } }),
+        ctx("demo-pu-201"),
+      );
+    for (let i = 0; i < 60; i++) expect((await hit()).status).toBe(200);
+    const blocked = await hit();
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBeTruthy();
   });
 
   it("public verification: 400 without electionId, 404 unknown unit, works with no evidence", async () => {

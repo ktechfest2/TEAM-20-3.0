@@ -269,8 +269,14 @@ export async function getUnitVerification(unitId: string, electionId: string | n
     repo.listReviews(ids),
     repo.listReferences(unit.electionId, unit.pollingUnitId),
   ]);
-  const latestRef = refs.at(-1) ?? null;
-  const refReviews = latestRef ? await repo.listReferenceReviews([latestRef.id]) : [];
+  // Compare against the latest SOURCE-CONFIRMED version. A newer unreviewed/rejected version
+  // (e.g. imported by one reviewer to mask a confirmed discrepancy) cannot displace it; it shows
+  // up for reviewers in GET /api/units/:id/references until a second reviewer confirms it.
+  // With no confirmed version, the latest version is used (and the engine treats it as unconfirmed).
+  const allRefReviews = await repo.listReferenceReviews(refs.map((r) => r.id));
+  const reviewsOf = (id: string) => allRefReviews.filter((x) => x.referenceId === id);
+  const latestRef = [...refs].reverse().find((r) => reviewStateFrom(reviewsOf(r.id)) === "CONFIRMED") ?? refs.at(-1) ?? null;
+  const refReviews = latestRef ? reviewsOf(latestRef.id) : [];
 
   const reference: VerificationReferenceInput | null = latestRef
     ? {

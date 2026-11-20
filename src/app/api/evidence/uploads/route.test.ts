@@ -5,10 +5,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, beforeEach } from "vitest";
 import { MAX_ORIGINAL_BYTES } from "@/lib/contracts";
 import { sha256HexNode } from "@/lib/evidence/service";
 import { resetStorageForTests } from "@/lib/storage";
+import { resetIpLimitersForTests } from "@/lib/evidence/rate-limit";
 import { POST as createSession } from "@/app/api/session/route";
 import { GET as getEvidence } from "@/app/api/evidence/[id]/route";
 import { POST as initRoute } from "./route";
@@ -40,6 +41,8 @@ const jsonReq = (url: string, cookie: string | null, body: unknown) =>
     headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
     body: JSON.stringify(body),
   });
+
+beforeEach(() => resetIpLimitersForTests());
 
 describe("direct upload over HTTP (LOCAL_DEV)", () => {
   it("session -> init -> PUT -> finalize -> GET; replay; 401 without cookie", async () => {

@@ -42,3 +42,23 @@ export function workflowLimiter(): RateLimiter {
 export function extractLimiter(): RateLimiter {
   return (gw.__polltraceExtractLimiter ??= createFixedWindowLimiter(10, 60_000));
 }
+
+const gi = globalThis as unknown as { __polltraceIpLimiters?: Map<string, RateLimiter> };
+/**
+ * Per-client-IP request limiter, one bucket set per name (per instance).
+ * verification: 60/min public reads; session: 10/min NEW anonymous sessions.
+ */
+export function ipLimiter(name: "verification" | "session"): RateLimiter {
+  const map = (gi.__polltraceIpLimiters ??= new Map());
+  let l = map.get(name);
+  if (!l) {
+    l = createFixedWindowLimiter(name === "verification" ? 60 : 10, 60_000);
+    map.set(name, l);
+  }
+  return l;
+}
+
+/** Tests only: clear per-IP buckets (route tests create many sessions from one "IP"). */
+export function resetIpLimitersForTests(): void {
+  gi.__polltraceIpLimiters = undefined;
+}

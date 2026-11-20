@@ -131,7 +131,7 @@ const MATRIX: Array<[Op, Actor, number, string?]> = [
   ["extract", "none", 401, "UNAUTHENTICATED"],
   ["extract", "otherContributor", 404, "NOT_FOUND"],
   ["extract", "owner", 201],
-  ["extract", "reviewer", 201],
+  ["extract", "reviewer", 403, "OWNER_ONLY"],
   ["extract", "selfReviewer", 201],
   ["confirm", "none", 401, "UNAUTHENTICATED"],
   ["confirm", "otherContributor", 404, "NOT_FOUND"],
@@ -182,7 +182,7 @@ describe("ACL matrix", () => {
       availableExtractionModes: ["DEMO_FIXTURE", "MANUAL"],
     });
     expect((await trace(revB, e1)).permissions).toEqual({
-      canExtract: true,
+      canExtract: false,
       canConfirm: false,
       canReview: true,
       reviewBlockedReason: null,
@@ -240,7 +240,7 @@ describe("review decisions", () => {
       async (id: string): Promise<void> => {
         await extract(alice, id);
         await confirm(alice, id, confirmBody(1));
-        await extract(revB, id);
+        await extract(alice, id);
       },
     ],
   ] as const)("ACCEPTED with %s -> 409 NO_CONFIRMED_REVISION", async (_n, setup) => {
@@ -250,6 +250,25 @@ describe("review decisions", () => {
     expect(r.status).toBe(409);
     expect(code(r)).toBe("NO_CONFIRMED_REVISION");
     expect((await storage.repo.listReviews([id])).length).toBe(0);
+  });
+
+  it.each([
+    ["different unit on the sheet", "DEMO.00.00.099", "ACCEPTED", 409, "PU_CODE_MISMATCH"],
+    ["different unit, FLAGGED allowed", "DEMO.00.00.099", "FLAGGED", 201, undefined],
+    ["different unit, REJECTED allowed", "DEMO.00.00.099", "REJECTED", 201, undefined],
+    ["same code, other punctuation", "demo 00-00-012", "ACCEPTED", 201, undefined],
+    ["code unreadable (null)", null, "ACCEPTED", 201, undefined],
+  ] as const)("PU code on sheet: %s -> %s %i", async (_n, sheetCode, decision, status, c) => {
+    const id = await upload(alice);
+    await extract(alice, id);
+    expect((await confirm(alice, id, confirmBody(1, { pollingUnitCodeOnSheet: sheetCode }))).status).toBe(201);
+    const r = await reviewEvidence(revB, id, review(decision), deps());
+    expect(r.status).toBe(status);
+    if (c) {
+      expect(code(r)).toBe(c);
+      expect(r.body).toMatchObject({ error: { sheetCode, registryCode: "DEMO.00.00.012" } });
+      expect(await storage.repo.listReviews([id])).toHaveLength(0);
+    }
   });
 
   it("later decisions append; latest wins; earlier events unchanged; audit per decision", async () => {
@@ -480,7 +499,9 @@ describe("status is derived from history (review events are the source of truth)
     await confirm(alice, id, confirmBody(1));
     await reviewEvidence(revB, id, review("ACCEPTED"), deps());
     expect(await statusOf(id)).toBe("ACCEPTED");
-    expect((await extract(revB, id)).status).toBe(201);
+    expect((await extract(revB, id)).status).toBe(403); // reviewers cannot add drafts
+    expect(await statusOf(id)).toBe("ACCEPTED");
+    expect((await extract(alice, id)).status).toBe(201);
     expect(await statusOf(id)).toBe("PENDING_REVIEW");
     const audit = (await storage.repo.listAudit(id)).filter((a) => a.eventType === "EXTRACTION_CREATED");
     expect(audit[0].metadata).toMatchObject({ previousStatus: "RECEIVED", newStatus: "RECEIVED", statusResetAfterReview: false });

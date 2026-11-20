@@ -18,37 +18,6 @@ export function passcodeMatches(given: string, env: Env = process.env): boolean 
   return timingSafeEqual(a, b);
 }
 
-export const MAX_FAILURES = 5;
-export const FAILURE_WINDOW_MS = 60_000;
-
-export interface FailureLimiter {
-  /** Seconds until allowed again, or 0. Does not count anything. */
-  blockedFor(key: string, nowMs?: number): number;
-  recordFailure(key: string, nowMs?: number): void;
-}
-
-export function createFailureLimiter(max = MAX_FAILURES, windowMs = FAILURE_WINDOW_MS): FailureLimiter {
-  const m = new Map<string, { start: number; count: number }>();
-  return {
-    blockedFor(key, nowMs = Date.now()) {
-      const w = m.get(key);
-      if (!w || nowMs - w.start >= windowMs) return 0;
-      return w.count >= max ? Math.max(1, Math.ceil((w.start + windowMs - nowMs) / 1000)) : 0;
-    },
-    recordFailure(key, nowMs = Date.now()) {
-      const w = m.get(key);
-      if (!w || nowMs - w.start >= windowMs) m.set(key, { start: nowMs, count: 1 });
-      else w.count += 1;
-    },
-  };
-}
-
-const g = globalThis as unknown as { __polltraceDemoFailures?: FailureLimiter };
-export const demoFailureLimiter = () => (g.__polltraceDemoFailures ??= createFailureLimiter());
-
-/** Best-effort client IP (Vercel sets x-forwarded-for). */
-export function clientIp(request: Request): string {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim() || "unknown";
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
-}
+// Lockout + client IP now live in src/lib/auth (shared with the demo-reviewer login).
+export { clientIp } from "@/lib/auth/client-ip";
+export { demoAdminGuard as demoFailureLimiter } from "@/lib/auth/passcode-guard";

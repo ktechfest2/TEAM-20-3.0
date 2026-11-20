@@ -10,6 +10,9 @@ import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const enabled = process.env.POLLTRACE_SUPABASE_SMOKE === "1";
+/** Reserved smoke-test unit. NEVER the live demo unit demo-pu-012 (demo reset won't clean smoke rows). */
+const SMOKE_UNIT = process.env.POLLTRACE_SMOKE_UNIT ?? "demo-pu-102";
+if (SMOKE_UNIT === "demo-pu-012") throw new Error("Smoke tests must not write to the live demo unit demo-pu-012");
 if (enabled && existsSync(".env.local")) process.loadEnvFile(".env.local");
 
 // 1x1 PNG (real, decodable) + a per-run nonce chunk after IEND so hashes differ per run.
@@ -44,7 +47,7 @@ describe.skipIf(!enabled)("SUPABASE smoke: direct signed upload + finalize", () 
 
     const meta = (csid: string, bytes: Uint8Array) => ({
       electionId: "demo-election",
-      pollingUnitId: "demo-pu-012",
+      pollingUnitId: SMOKE_UNIT,
       clientSubmissionId: csid,
       originalSha256: sha256HexNode(bytes),
       sizeBytes: bytes.byteLength,
@@ -98,7 +101,7 @@ describe.skipIf(!enabled)("SUPABASE smoke: direct signed upload + finalize", () 
       {
         principal: p,
         file: bytesC,
-        fields: { electionId: "demo-election", pollingUnitId: "demo-pu-012", clientSubmissionId: csidC, originalSha256: sha256HexNode(bytesC), sourceType: "WITNESS_PHOTO" },
+        fields: { electionId: "demo-election", pollingUnitId: SMOKE_UNIT, clientSubmissionId: csidC, originalSha256: sha256HexNode(bytesC), sourceType: "WITNESS_PHOTO" },
       },
       deps,
     );
@@ -155,7 +158,7 @@ describe.skipIf(!enabled)("SUPABASE smoke: extract + confirm + review + trace", 
         file: bytes,
         fields: {
           electionId: "demo-election",
-          pollingUnitId: "demo-pu-012",
+          pollingUnitId: SMOKE_UNIT,
           clientSubmissionId: randomUUID(),
           originalSha256: sha256HexNode(bytes),
           capturedAtClaimed: new Date(Date.now() - 60_000).toISOString(),
@@ -171,13 +174,13 @@ describe.skipIf(!enabled)("SUPABASE smoke: extract + confirm + review + trace", 
 
     const ex = await wf.extractEvidence(owner, id, { mode: "AUTO" }, deps);
     log.extract = { status: ex.status, modeUsed: (ex.body as { modeUsed?: string }).modeUsed };
-    const rv = await wf.extractEvidence(reviewer, id, { mode: "REAL_VISION" }, deps);
+    const rv = await wf.extractEvidence(owner, id, { mode: "REAL_VISION" }, deps);
     log.extractRealVision = rv.status;
 
     const confirmBody = {
       basedOnRevision: 1,
       formType: "EC8A",
-      pollingUnitCodeOnSheet: "DEMO.00.00.012",
+      pollingUnitCodeOnSheet: null, // unit-agnostic (a mismatching code would now block ACCEPTED)
       entries: [
         { partyCode: "PARTY_A", votes: 145, needsReview: false },
         { partyCode: "PARTY_B", votes: null, needsReview: true },
@@ -222,7 +225,7 @@ describe.skipIf(!enabled)("SUPABASE smoke: extract + confirm + review + trace", 
     };
 
     // RPC path under contention: 3 concurrent extracts after ACCEPTED (exercises 23505 -> retry).
-    const concurrent = await Promise.all([1, 2, 3].map(() => wf.extractEvidence(reviewer, id, { mode: "AUTO" }, deps)));
+    const concurrent = await Promise.all([1, 2, 3].map(() => wf.extractEvidence(owner, id, { mode: "AUTO" }, deps)));
     const revsAfter = await storage.repo.listRevisions([id]);
     log.concurrentExtracts = {
       statuses: concurrent.map((r) => r.status),
@@ -270,7 +273,7 @@ describe.skipIf(!enabled)("SUPABASE smoke: extract + confirm + review + trace", 
 
 describe.skipIf(!enabled)("SUPABASE smoke: references + unit verification (+60)", () => {
   it("end to end on an otherwise empty synthetic unit", { timeout: 90_000 }, async () => {
-    const UNIT = process.env.POLLTRACE_SMOKE_UNIT ?? "demo-pu-102"; // never the live demo unit demo-pu-012
+    const UNIT = SMOKE_UNIT;
     expect(UNIT).not.toBe("demo-pu-012");
     const { createStorage } = await import("@/lib/storage");
     const { createFixedWindowLimiter } = await import("@/lib/evidence/rate-limit");

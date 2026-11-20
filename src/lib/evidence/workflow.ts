@@ -16,7 +16,7 @@ import {
   type TraceEvent,
 } from "@/lib/contracts/trace";
 import { reviewerRef, type Principal } from "@/lib/auth/session";
-import { availableModes, consistencyWarnings, ExtractionError, runExtraction, validateConfirm } from "@/lib/extraction";
+import { availableModes, consistencyWarnings, ExtractionError, normalisePollingUnitCode, runExtraction, validateConfirm, type ExtractionRun } from "@/lib/extraction";
 import { findPollingUnit, PARTY_ROSTER } from "@/lib/seed/registry";
 import type { EvidenceRecord, EvidenceStorage, RevisionRecord } from "@/lib/storage";
 import { evidenceNotFound, loadVisibleEvidence, reviewersOnly, unauthenticated } from "./access";
@@ -31,6 +31,8 @@ export interface WorkflowDeps {
   newId?: () => string;
   /** Extraction env override (tests). Defaults to process.env inside the extraction module. */
   extractionEnv?: Record<string, string | undefined>;
+  /** Extraction runner override (tests inject provider outcomes). Defaults to runExtraction. */
+  extractor?: typeof runExtraction;
 }
 
 export const AUDIT_REVIEW_RECORDED = "REVIEW_RECORDED";
@@ -149,6 +151,15 @@ export async function reviewEvidence(p: Principal | null, id: string, body: unkn
         latestRevision: latest?.revisionNumber ?? null,
       });
     }
+    // A sheet showing a different polling unit cannot be accepted for this unit (flag or reject instead).
+    const registryCode = findPollingUnit(evidence.pollingUnitId)?.code ?? evidence.pollingUnitId;
+    const sheetCode = latest.pollingUnitCodeOnSheet;
+    if (sheetCode && normalisePollingUnitCode(sheetCode) !== normalisePollingUnitCode(registryCode)) {
+      return fail(409, "PU_CODE_MISMATCH", "The polling unit code on the sheet does not match this polling unit. Flag or reject it instead.", {
+        sheetCode,
+        registryCode,
+      });
+    }
   }
 
   const previousStatus = await derivedStatusOf(deps, evidence.id);
@@ -206,24 +217,144 @@ async function appendRevisionWithRetry(
   return null;
 }
 
+/* ------------------------------------------------------------------ extraction (owner only) */
+
+export const AUDIT_EXTRACTION_STARTED = "EXTRACTION_STARTED";
+export const AUDIT_EXTRACTION_FAILED = "EXTRACTION_FAILED";
+/** Closes an attempt that yielded to a concurrent one (never called the provider). */
+export const AUDIT_EXTRACTION_ABANDONED = "EXTRACTION_ABANDONED";
+export const MAX_REAL_VISION_ATTEMPTS = 3;
+export const EXTRACTION_LOCK_MS = 90_000;
+const MAX_NOTES = 5;
+const MAX_NOTE_LENGTH = 300;
+
+type ExtractionFailureCode = "MODE_UNAVAILABLE" | "NOT_CONFIGURED" | "INVALID_DRAFT" | "UNSUPPORTED_DOCUMENT" | "PROVIDER_TIMEOUT" | "PROVIDER_ERROR" | "REFUSED";
+
+/** Model notes are untrusted text: plain, short, few. Never rendered as HTML by contract. */
+const safeNotes = (details: readonly string[] | undefined) =>
+  (details ?? [])
+    .slice(0, MAX_NOTES)
+    .map((d) => String(d).replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, MAX_NOTE_LENGTH))
+    .filter(Boolean);
+
+/** Defence in depth: never persist anything that looks like a credential or raw HTTP headers. */
+const SECRETISH_KEY = /api[-_]?key|authorization|secret|password|token|^headers$|cookie/i;
+function scrub(v: unknown, depth = 0): unknown {
+  if (depth > 8 || v === null || typeof v !== "object") return v;
+  if (Array.isArray(v)) return v.map((x) => scrub(x, depth + 1));
+  return Object.fromEntries(
+    Object.entries(v as Record<string, unknown>)
+      .filter(([k]) => !SECRETISH_KEY.test(k))
+      .map(([k, x]) => [k, scrub(x, depth + 1)]),
+  );
+}
+
+function mapExtractionError(code: ExtractionFailureCode, message: string, details: readonly string[] | undefined): ServiceResult {
+  switch (code) {
+    case "MODE_UNAVAILABLE":
+    case "NOT_CONFIGURED":
+      return fail(422, "MODE_UNAVAILABLE", message);
+    case "UNSUPPORTED_DOCUMENT":
+      return fail(422, "EXTRACTION_UNSUPPORTED_DOCUMENT", message, { notes: safeNotes(details) });
+    case "PROVIDER_TIMEOUT":
+      return fail(504, "EXTRACTION_TIMEOUT", "Automatic reading took too long. Nothing was stored; enter the figures by hand or try again.");
+    case "INVALID_DRAFT":
+    case "REFUSED":
+    case "PROVIDER_ERROR":
+      return fail(502, "EXTRACTION_REJECTED", "Automatic reading did not produce usable figures. Nothing was stored; enter the figures by hand.");
+  }
+}
+
+/**
+ * REAL_VISION attempt bookkeeping from the append-only audit log (no extra table):
+ *  - attempts = EXTRACTION_CREATED + EXTRACTION_FAILED rows with mode REAL_VISION
+ *  - open attempts = EXTRACTION_STARTED within the lock window with no CREATED/FAILED/ABANDONED
+ *    carrying the same attemptId
+ */
+async function visionAttemptState(deps: WorkflowDeps, evidenceId: string, nowMs: number) {
+  const audit = await deps.storage.repo.listAudit(evidenceId);
+  const closed = new Set(
+    audit
+      .filter((a) => [AUDIT_EXTRACTION_CREATED, AUDIT_EXTRACTION_FAILED, AUDIT_EXTRACTION_ABANDONED].includes(a.eventType))
+      .map((a) => String(a.metadata.attemptId ?? "")),
+  );
+  const attempts = audit.filter(
+    (a) => (a.eventType === AUDIT_EXTRACTION_CREATED || a.eventType === AUDIT_EXTRACTION_FAILED) && a.metadata.mode === "REAL_VISION",
+  ).length;
+  const open = audit
+    .filter(
+      (a) =>
+        a.eventType === AUDIT_EXTRACTION_STARTED &&
+        nowMs - Date.parse(a.createdAt) < EXTRACTION_LOCK_MS &&
+        !closed.has(String(a.metadata.attemptId ?? "")),
+    )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  return { attempts, open };
+}
+
 export async function extractEvidence(p: Principal | null, id: string, body: unknown, deps: WorkflowDeps): Promise<ServiceResult> {
   const loaded = await loadVisibleEvidence(p, id, deps.storage);
   if (!loaded.ok) return loaded.result;
-  const { evidence, principal } = loaded;
+  const { evidence, principal, relation } = loaded;
+  // Owner only: a reviewer adding a draft would silently withdraw an acceptance.
+  if (relation !== "OWNER") {
+    return fail(403, "OWNER_ONLY", "Only the person who submitted this photo can read figures from it. Reviewers record a decision instead.");
+  }
 
   const limited = rateLimited(deps.rateLimiter, `extract:${principal.contributorId}`);
   if (limited) return limited;
 
   const parsed = ExtractRequest.safeParse(body ?? {});
   if (!parsed.success) return invalid("INVALID_REQUEST", "Expected { mode?: AUTO | REAL_VISION | MANUAL | DEMO_FIXTURE }.", parsed.error);
+  const requested = parsed.data.mode;
+
+  const envArgs = deps.extractionEnv ? [deps.extractionEnv] : [];
+  const modesNow = availableModes({ synthetic: evidence.synthetic }, ...envArgs);
+  const planned = requested === "AUTO" ? (modesNow[0] ?? "MANUAL") : requested;
+  const vision = planned === "REAL_VISION";
+  const nowMs = () => (deps.now ?? (() => new Date()))().getTime();
+  const attemptId = newIdOf(deps);
+  const { repo } = deps.storage;
+  const audit = (eventType: string, metadata: Record<string, unknown>) =>
+    repo.appendAudit({
+      id: newIdOf(deps),
+      evidenceId: evidence.id,
+      actorId: principal.contributorId,
+      eventType,
+      metadata: { attemptId, synthetic: evidence.synthetic, ...metadata },
+      createdAt: new Date(nowMs()).toISOString(),
+    });
+
+  // Paid / slow provider calls: per-evidence cap and single-flight (manual & demo are unaffected).
+  if (vision) {
+    const before = await visionAttemptState(deps, evidence.id, nowMs());
+    if (before.attempts >= MAX_REAL_VISION_ATTEMPTS) {
+      return fail(429, "EXTRACTION_LIMIT_REACHED", `Automatic reading was already tried ${MAX_REAL_VISION_ATTEMPTS} times for this photo. Enter the figures by hand.`);
+    }
+    if (before.open.length > 0) {
+      return fail(409, "EXTRACTION_IN_PROGRESS", "Figures are already being read from this photo. Wait a moment and reload.");
+    }
+    await audit(AUDIT_EXTRACTION_STARTED, { mode: "REAL_VISION", requestedMode: requested });
+    // Narrow the check-then-insert race: after our insert, the earliest open attempt wins.
+    const after = await visionAttemptState(deps, evidence.id, nowMs());
+    const winner = after.open[0];
+    if (winner && String(winner.metadata.attemptId) !== attemptId) {
+      await audit(AUDIT_EXTRACTION_ABANDONED, { mode: "REAL_VISION", yieldedTo: winner.metadata.attemptId });
+      return fail(409, "EXTRACTION_IN_PROGRESS", "Figures are already being read from this photo. Wait a moment and reload.");
+    }
+  }
 
   const bytes = await deps.storage.objects.get(evidence.originalPath);
-  if (!bytes) return fail(409, "ORIGINAL_MISSING", "The original file is not available, so nothing can be read from it.");
+  if (!bytes) {
+    if (vision) await audit(AUDIT_EXTRACTION_FAILED, { mode: planned, code: "ORIGINAL_MISSING", durationMs: 0 });
+    return fail(409, "ORIGINAL_MISSING", "The original file is not available, so nothing can be read from it.");
+  }
   const unit = findPollingUnit(evidence.pollingUnitId);
 
-  let run: Awaited<ReturnType<typeof runExtraction>>;
+  const startedMs = nowMs();
+  let run: ExtractionRun;
   try {
-    run = await runExtraction(
+    run = await (deps.extractor ?? runExtraction)(
       {
         evidenceId: evidence.id,
         bytes,
@@ -232,23 +363,43 @@ export async function extractEvidence(p: Principal | null, id: string, body: unk
         pollingUnitCode: unit?.code ?? evidence.pollingUnitId,
         partyRoster: PARTY_ROSTER,
       },
-      parsed.data.mode,
-      ...(deps.extractionEnv ? [deps.extractionEnv] : []),
+      requested,
+      ...envArgs,
     );
   } catch (err) {
-    if (err instanceof ExtractionError || (err as { code?: string })?.code) {
-      const code = (err as { code: string }).code;
-      if (code === "MODE_UNAVAILABLE" || code === "NOT_CONFIGURED") {
-        return fail(422, "MODE_UNAVAILABLE", (err as Error).message);
-      }
-      if (code === "INVALID_DRAFT") {
-        return fail(502, "EXTRACTION_REJECTED", "The extractor's output failed validation. Nothing was stored.");
-      }
+    const durationMs = Math.max(0, nowMs() - startedMs);
+    const code = (err as { code?: unknown })?.code;
+    const known = err instanceof ExtractionError || typeof code === "string";
+    await audit(AUDIT_EXTRACTION_FAILED, {
+      mode: planned,
+      provider: vision ? "anthropic" : null,
+      model: null,
+      code: known ? String(code) : "UNEXPECTED",
+      durationMs,
+    });
+    if (known) {
+      const mapped = mapExtractionError(code as ExtractionFailureCode, (err as Error).message, (err as { details?: readonly string[] }).details);
+      if (mapped) return mapped;
     }
     throw err;
   }
 
   const { draft, modeUsed } = run;
+  const durationMs = run.provenance?.durationMs ?? Math.max(0, nowMs() - startedMs);
+  const rawExtraction = scrub({
+    draft,
+    uncertainFields: [...(run.uncertainFields ?? [])],
+    ...(run.provenance
+      ? {
+          provider: run.provenance.provider,
+          model: run.provenance.model,
+          extractedAt: run.provenance.extractedAt,
+          durationMs: run.provenance.durationMs,
+          modelOutput: run.rawModelOutput ?? null,
+        }
+      : {}),
+  });
+
   const previousStatus = await derivedStatusOf(deps, evidence.id);
   const createdAt = nowIso(deps);
   const stored = await appendRevisionWithRetry(deps, evidence.id, (revisionNumber) => ({
@@ -264,32 +415,31 @@ export async function extractEvidence(p: Principal | null, id: string, body: unk
     rejectedVotes: draft.rejectedVotes,
     validVotes: draft.validVotes,
     warnings: dedupe(draft.warnings),
-    rawExtraction: draft,
+    rawExtraction,
     humanConfirmed: false,
     basedOnRevision: null,
     note: null,
     createdBy: principal.contributorId,
     createdAt,
   }));
-  if (!stored) return fail(409, "REVISION_CONFLICT", "Another revision was being written at the same time. Try again.");
+  if (!stored) {
+    if (vision) await audit(AUDIT_EXTRACTION_FAILED, { mode: modeUsed, code: "REVISION_CONFLICT", durationMs });
+    return fail(409, "REVISION_CONFLICT", "Another revision was being written at the same time. Try again.");
+  }
   // A new revision after a decision sends the evidence back to a reviewer.
   const newStatus = await syncStatus(deps, evidence);
 
-  await deps.storage.repo.appendAudit({
-    id: newIdOf(deps),
-    evidenceId: evidence.id,
-    actorId: principal.contributorId,
-    eventType: AUDIT_EXTRACTION_CREATED,
-    metadata: {
-      revisionNumber: stored.revisionNumber,
-      mode: modeUsed,
-      requestedMode: parsed.data.mode,
-      previousStatus,
-      newStatus,
-      statusResetAfterReview: previousStatus === "ACCEPTED" || previousStatus === "REJECTED",
-      synthetic: evidence.synthetic,
-    },
-    createdAt,
+  await audit(AUDIT_EXTRACTION_CREATED, {
+    revisionNumber: stored.revisionNumber,
+    mode: modeUsed,
+    requestedMode: requested,
+    provider: run.provenance?.provider ?? null,
+    model: run.provenance?.model ?? null,
+    durationMs,
+    uncertainFields: (run.uncertainFields ?? []).length,
+    previousStatus,
+    newStatus,
+    statusResetAfterReview: previousStatus === "ACCEPTED" || previousStatus === "REJECTED",
   });
 
   const response: ExtractResponse = {
@@ -397,6 +547,10 @@ export async function confirmEvidence(p: Principal | null, id: string, body: unk
 
 const fmtTime = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 
+/** Exact timeline wording for AI-assisted reading (lead-approved design brief). */
+export const AI_SUGGESTED_SUMMARY = "An AI model suggested figures — not checked yet.";
+export const AI_CONFIRMED_SUMMARY = "A person checked the figures against the photo and confirmed them.";
+
 const EXTRACTION_SUMMARY: Record<string, string> = {
   DEMO_FIXTURE: "demo figures from a synthetic fixture were loaded. They were not read from this photo.",
   REAL_VISION: "figures were read from the photo by an automated vision model. They need a person to check them.",
@@ -451,14 +605,18 @@ export function buildTimeline(
   for (const r of revisions) {
     if (r.origin === "HUMAN_CORRECTION") {
       const unreadable = r.entries.filter((x) => x.votes === null).length;
+      const base = r.basedOnRevision ? revisions.find((x) => x.revisionNumber === r.basedOnRevision) : undefined;
       events.push({
         type: "HUMAN_CONFIRMATION",
         at: r.createdAt,
+        // Exact wording (design brief) when a person checked an AI suggestion.
         summary:
-          `Revision ${r.revisionNumber}: the submitter typed or checked the figures` +
-          (r.basedOnRevision ? ` (based on revision ${r.basedOnRevision})` : "") +
-          "." +
-          (unreadable > 0 ? ` ${unreadable} figure${unreadable === 1 ? " was" : "s were"} marked unreadable.` : ""),
+          base?.origin === "REAL_VISION"
+            ? AI_CONFIRMED_SUMMARY
+            : `Revision ${r.revisionNumber}: the submitter typed or checked the figures` +
+              (r.basedOnRevision ? ` (based on revision ${r.basedOnRevision})` : "") +
+              "." +
+              (unreadable > 0 ? ` ${unreadable} figure${unreadable === 1 ? " was" : "s were"} marked unreadable.` : ""),
         ref: String(r.revisionNumber),
         claimOnly: false,
       });
@@ -467,7 +625,7 @@ export function buildTimeline(
       events.push({
         type: "EXTRACTION",
         at: r.createdAt,
-        summary: `Revision ${r.revisionNumber}: ${EXTRACTION_SUMMARY[mode] ?? "a draft was created."}`,
+        summary: mode === "REAL_VISION" ? AI_SUGGESTED_SUMMARY : `Revision ${r.revisionNumber}: ${EXTRACTION_SUMMARY[mode] ?? "a draft was created."}`,
         ref: String(r.revisionNumber),
         claimOnly: false,
       });
@@ -532,7 +690,7 @@ export async function getTrace(p: Principal | null, id: string, deps: WorkflowDe
     timeline: buildTimeline(e, revisions, reviews, serverHashMatchedClient),
     viewer: relation,
     permissions: {
-      canExtract: true, // owner or reviewer (anyone else already got 404)
+      canExtract: owner, // owner only (2026-11-20)
       canConfirm: owner,
       canReview: isReviewer && !owner,
       reviewBlockedReason,

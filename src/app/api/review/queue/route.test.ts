@@ -5,9 +5,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, beforeEach } from "vitest";
 import { sha256HexNode } from "@/lib/evidence/service";
 import { resetStorageForTests } from "@/lib/storage";
+import { resetIpLimitersForTests } from "@/lib/evidence/rate-limit";
 import { GET as getSession, POST as createSession } from "@/app/api/session/route";
 import { POST as demoReviewerLogin } from "@/app/api/session/demo-reviewer/route";
 import { POST as postEvidence } from "@/app/api/evidence/route";
@@ -70,6 +71,8 @@ async function uploadAs(cookie: string, bytes = PNG) {
   return postEvidence(new Request(`${BASE}/api/evidence`, { method: "POST", body: fd, headers: { cookie } }));
 }
 
+beforeEach(() => resetIpLimitersForTests());
+
 describe("reviewer workflow over HTTP", () => {
   it("end to end with ACL and error codes the UI relies on", async () => {
     const owner = await phone();
@@ -111,7 +114,10 @@ describe("reviewer workflow over HTTP", () => {
     const ex = await extractRoute(new Request(`${BASE}/x`, { method: "POST", headers: { cookie: owner } }), ctx(id));
     expect(ex.status).toBe(201);
     expect((await ex.json()).modeUsed).toBe("DEMO_FIXTURE");
-    const rv = await extractRoute(req(`/x`, revA, "POST", { mode: "REAL_VISION" }), ctx(id));
+    const byReviewer = await extractRoute(req(`/x`, revA, "POST", { mode: "AUTO" }), ctx(id));
+    expect(byReviewer.status).toBe(403);
+    expect((await byReviewer.json()).error.code).toBe("OWNER_ONLY");
+    const rv = await extractRoute(req(`/x`, owner, "POST", { mode: "REAL_VISION" }), ctx(id));
     expect(rv.status).toBe(422);
     expect((await rv.json()).error.code).toBe("MODE_UNAVAILABLE");
 

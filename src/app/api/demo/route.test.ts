@@ -11,6 +11,7 @@ import { DEMO_REVIEWER_A, DEMO_SUBMISSION_IDS, DEMO_WITNESSES } from "@/lib/demo
 import { sha256HexNode } from "@/lib/evidence/service";
 import { createLocalStorage } from "@/lib/storage/local";
 import { getStorage, resetStorageForTests } from "@/lib/storage";
+import { resetIpLimitersForTests } from "@/lib/evidence/rate-limit";
 import { POST as createSession } from "@/app/api/session/route";
 import { POST as demoReviewerLogin } from "@/app/api/session/demo-reviewer/route";
 import { POST as postEvidence } from "@/app/api/evidence/route";
@@ -54,7 +55,7 @@ afterAll(() => {
 const admin = (url: string, body: unknown, fromIp = ip) =>
   new Request(`${BASE}${url}`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-forwarded-for": `${fromIp}, 10.0.0.1` },
+    headers: { "content-type": "application/json", "x-vercel-forwarded-for": fromIp },
     body: JSON.stringify(body),
   });
 const stage = (s: string, passcode = PASS, fromIp = ip) =>
@@ -81,6 +82,8 @@ const counts = async () => {
     audit: d.audit.length,
   };
 };
+
+beforeEach(() => resetIpLimitersForTests());
 
 describe("access, passcode, disabled, rate limit", () => {
   it("GET /api/demo is public and reports enabled without secrets", async () => {

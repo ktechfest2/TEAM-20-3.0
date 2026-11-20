@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MAX_ORIGINAL_BYTES } from "@/lib/contracts";
 import { sha256HexNode } from "@/lib/evidence/service";
 import { resetStorageForTests } from "@/lib/storage";
+import { resetIpLimitersForTests } from "@/lib/evidence/rate-limit";
 import { POST as createSession } from "@/app/api/session/route";
 import { POST as demoReviewerLogin } from "@/app/api/session/demo-reviewer/route";
 import { POST as postEvidence } from "./route";
@@ -62,6 +63,8 @@ function evidenceRequest(cookie: string | null, bytes: Uint8Array, over: Record<
 }
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
+
+beforeEach(() => resetIpLimitersForTests());
 
 describe("POST /api/evidence (route handler)", () => {
   let cookie: string;

@@ -89,7 +89,12 @@ export function readCookie(request: Request, name: string): string | null {
   for (const part of header.split(";")) {
     const idx = part.indexOf("=");
     if (idx < 0) continue;
-    if (part.slice(0, idx).trim() === name) return decodeURIComponent(part.slice(idx + 1).trim());
+    if (part.slice(0, idx).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(idx + 1).trim());
+    } catch {
+      return null; // malformed percent-encoding: treat as no session, never a 500
+    }
   }
   return null;
 }

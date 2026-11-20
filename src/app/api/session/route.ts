@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { getPrincipal, SESSION_COOKIE, sessionCookieHeader, signSessionToken } from "@/lib/auth/session";
 import { demoReviewersEnabled } from "@/lib/auth/demo-reviewers";
+import { clientIp } from "@/lib/auth/client-ip";
 import { json, serverError } from "@/lib/evidence/http";
+import { ipLimiter } from "@/lib/evidence/rate-limit";
+import { errorBody } from "@/lib/evidence/service";
 import { getStorage } from "@/lib/storage";
 
 const view = (p: { role: string; alias: string; synthetic: boolean }, storageMode: string) => ({
@@ -34,6 +37,12 @@ export async function POST(request: Request): Promise<Response> {
     const storage = getStorage();
     const existing = await getPrincipal(request, storage);
     if (existing) return json(200, view(existing, storage.mode));
+
+    // Only NEW sessions count (10/min per IP): stops minting throwaway contributors in bulk.
+    const wait = ipLimiter("session").hit(`ip:${clientIp(request)}`);
+    if (wait > 0) {
+      return json(429, errorBody("RATE_LIMITED", "Too many new sessions from this network; retry later."), { "Retry-After": String(wait) });
+    }
 
     const id = randomUUID();
     const c = await storage.repo.ensureContributor({
