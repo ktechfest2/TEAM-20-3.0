@@ -5,13 +5,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { CircleCheck, CircleMinus, Copy, TriangleAlert, WifiOff } from "lucide-react";
 import { UnitVerification, ReferenceView, type FieldDifference } from "@/lib/contracts/verification";
 import { z } from "zod";
-import { DemoTag } from "@/components/demo-band";
+import { DemoTag, HistoricalTag, RecordTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { apiJson } from "@/components/client/api";
 import { fmtTime, INDEPENDENCE_LINE, partyLabel, plural } from "@/components/client/format";
 import { isReviewer, useSession } from "@/components/client/session";
 import {
-  DEMO_ELECTION_ID,
   higherLower,
   partyList,
   PROVENANCE,
@@ -20,7 +19,8 @@ import {
   STATUS_META,
 } from "@/components/units/labels";
 import { shortFingerprint } from "@/lib/offline/hash";
-import { findPollingUnit } from "@/lib/seed/registry";
+import { electionForUnit, findPollingUnit } from "@/lib/seed/registry";
+import { NG2023_SOURCE, NG2023_UNITS } from "@/lib/seed/historical-ng2023";
 
 type State =
   | { status: "loading" }
@@ -65,7 +65,7 @@ export function UnitComparison({ id }: { id: string }) {
   useEffect(() => {
     if (!unit) return;
     const ctrl = new AbortController();
-    apiJson(`/api/units/${encodeURIComponent(id)}/verification?electionId=${DEMO_ELECTION_ID}`, UnitVerification, {
+    apiJson(`/api/units/${encodeURIComponent(id)}/verification?electionId=${electionForUnit(id)}`, UnitVerification, {
       signal: ctrl.signal,
     })
       .then((r) => {
@@ -154,6 +154,7 @@ function Comparison({
       : meta.means({ distinct: v.distinctOriginals, independent: v.independentSources, parties });
   const copies = v.members.filter((m) => m.duplicateOf !== null).length;
   const noEvidence = v.status === "NO_EVIDENCE";
+  const historical = !unit.synthetic;
 
   return (
     <div className="grid gap-8 lg:grid-cols-12">
@@ -164,7 +165,7 @@ function Comparison({
           </p>
           <h1 className="mt-1 font-mono text-xl md:text-2xl">{unit.code}</h1>
           <p className="mt-1">
-            {unit.name} {unit.synthetic || v.synthetic ? <DemoTag /> : null}
+            {unit.name} <RecordTag synthetic={unit.synthetic} />
           </p>
           <p className="mt-1 text-sm text-ink-muted">
             {v.formType ? `Form type compared: ${v.formType}` : "Form type: not known yet"}
@@ -236,7 +237,17 @@ function Comparison({
           Comparison as of <span className="font-mono text-ink">{fmtTime(fetchedAt)}</span>
         </p>
 
-        {noEvidence && !reviewer ? (
+        {noEvidence && historical ? (
+          <>
+            <p>
+              No witness photos have been submitted for this polling unit in PollTrace. The figures below are a
+              historical 2023 record, shown for reference.
+            </p>
+            <HistoricalFigures unitId={unit.id} reference={v.reference} />
+          </>
+        ) : null}
+
+        {noEvidence && !reviewer && unit.synthetic ? (
           <p>
             Have a photo of this result sheet?{" "}
             <Link href="/capture" className="inline-flex min-h-11 items-center font-bold text-primary">
@@ -260,11 +271,13 @@ function Comparison({
       </div>
 
       <div className="grid content-start gap-8 lg:col-span-5">
-        {v.reference ? (
+        {historical ? (
+          <HistoricalSlip reference={v.reference} tools={reviewer ? <ReviewerTools unitId={unit.id} /> : null} />
+        ) : v.reference ? (
           <ReferenceSlip reference={v.reference} tools={reviewer ? <ReviewerTools unitId={unit.id} /> : null} />
         ) : null}
         {noEvidence ? null : <Members v={v} reviewer={reviewer} />}
-        {reviewer && !v.reference ? (
+        {reviewer && !v.reference && !historical ? (
           <section aria-label="Reviewer tools" className="rounded-md bg-sunken p-4">
             <ReviewerTools unitId={unit.id} />
           </section>
@@ -491,6 +504,106 @@ function NoAllegation({ open }: { open: boolean }) {
   );
 }
 
+/** Figures of a real 2023 unit: from its reference record if imported, else from the bundled sample. */
+function HistoricalFigures({ unitId, reference }: { unitId: string; reference: UnitVerification["reference"] }) {
+  const sample = NG2023_UNITS.find((u) => u.id === unitId);
+  const figures: Record<string, number> | undefined = reference?.figures ?? sample?.figures;
+  if (!figures) return null;
+  return (
+    <table className="w-full border-collapse text-left">
+      <caption className="pb-2 text-left">
+        <span className="flex flex-wrap items-center gap-2 font-bold">
+          2023 presidential figures <HistoricalTag />
+        </span>
+        <span className="block text-sm">Historical record. Not INEC-certified.</span>
+      </caption>
+      <thead>
+        <tr className="border-b-2 border-rule text-sm">
+          <th scope="col" className="py-2 pr-2">
+            Party
+          </th>
+          <th scope="col" className="py-2 text-right">
+            Votes
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {Object.entries(figures).map(([code, n]) => (
+          <tr key={code} className="border-b border-rule">
+            <th scope="row" className="py-2 pr-2 font-normal">
+              {partyLabel(code)}
+            </th>
+            <td className="py-2 text-right font-mono">{n}</td>
+          </tr>
+        ))}
+        {sample?.accreditedVoters != null ? (
+          <tr className="border-b border-rule">
+            <th scope="row" className="py-2 pr-2 font-normal">
+              Accredited voters
+            </th>
+            <td className="py-2 text-right font-mono">{sample.accreditedVoters}</td>
+          </tr>
+        ) : null}
+      </tbody>
+    </table>
+  );
+}
+
+/** Source slip for real 2023 historical units: who published it, what it is not, where the data lives. */
+function HistoricalSlip({ reference: r, tools }: { reference: UnitVerification["reference"]; tools: ReactNode }) {
+  const reviewed = r && r.reviewState !== "NOT_REVIEWED" ? PROVENANCE[r.reviewState] : null;
+  return (
+    <section aria-labelledby="hist-h" className="slip">
+      <div className="px-4 py-3">
+        <h2 id="hist-h" className="flex flex-wrap items-center gap-2 font-sans text-lg font-bold">
+          Historical record <HistoricalTag />
+        </h2>
+        <p className="mt-1">
+          Historical record — Nigeria 2.0 independent crosscheck of 2023 result sheets. Not INEC-certified.
+          {reviewed ? null : " Source not reviewed by PollTrace reviewers."}
+        </p>
+      </div>
+      <dl className="grid gap-3 px-4 py-3">
+        <div>
+          <dt className="slip-label">Source description</dt>
+          <dd>“{r?.sourceDescription ?? `${NG2023_SOURCE.name} (${NG2023_SOURCE.scope})`}”</dd>
+        </div>
+        <div>
+          <dt className="slip-label">Source data</dt>
+          <dd>
+            <a
+              href={NG2023_SOURCE.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center font-bold text-primary"
+            >
+              Source data (GitHub)<span className="sr-only"> (opens in a new tab)</span>
+            </a>
+            <span className="block font-mono text-sm break-words text-ink-muted">{NG2023_SOURCE.file}</span>
+          </dd>
+        </div>
+        {r ? (
+          <div>
+            <dt className="slip-label">Reference record</dt>
+            <dd>
+              Version <span className="font-mono">{r.version}</span>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {reviewed ? (
+        <div className="grid gap-2 px-4 py-3">
+          <div>
+            <Stamp label={reviewed.stamp} icon={reviewed.icon} tone={reviewed.tone} />
+          </div>
+          <p className="text-sm">{reviewed.text}</p>
+        </div>
+      ) : null}
+      {tools ? <div className="px-4 py-3">{tools}</div> : null}
+    </section>
+  );
+}
+
 function ReferenceSlip({
   reference: r,
   tools,
@@ -658,7 +771,7 @@ function ReviewerTools({ unitId }: { unitId: string }) {
   const [newest, setNewest] = useState<{ total: number; version: number; state: string } | null>(null);
   useEffect(() => {
     const ctrl = new AbortController();
-    apiJson(`/api/units/${unitId}/references?electionId=${DEMO_ELECTION_ID}`, z.array(ReferenceView), {
+    apiJson(`/api/units/${unitId}/references?electionId=${electionForUnit(unitId)}`, z.array(ReferenceView), {
       signal: ctrl.signal,
     })
       .then((r) => {

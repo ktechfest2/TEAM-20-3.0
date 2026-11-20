@@ -24,8 +24,8 @@ const mono = Atkinson_Hyperlegible_Mono({
 });
 
 export const metadata: Metadata = {
-  // Every record in this build is synthetic; the title says so.
-  title: { default: "[DEMO] PollTrace", template: "[DEMO] %s · PollTrace" },
+  // The site band says which records are synthetic and which are historical; titles stay plain.
+  title: { default: "PollTrace", template: "%s · PollTrace" },
   description:
     "Capture a photo of a posted polling-unit result, keep it safe offline, and trace how records compare. Not affiliated with INEC.",
   applicationName: "PollTrace",

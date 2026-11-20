@@ -62,7 +62,7 @@ test("capture → local receipt survives refresh → uploads exactly once", asyn
 
   // Step 1: choose and explicitly confirm the polling unit.
   await page.goto("/capture");
-  await expect(page.getByRole("note", { name: "Demo data notice" })).toBeVisible();
+  await expect(page.getByRole("note", { name: "Test build notice" })).toBeVisible();
   await page.getByLabel("Search by polling unit code or name").fill("201");
   await page.getByRole("radio", { name: /DEMO\.01\.02\.201/ }).check();
   await page.getByRole("button", { name: "Yes, this is the polling unit" }).click();

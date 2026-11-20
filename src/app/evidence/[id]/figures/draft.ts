@@ -10,7 +10,7 @@
  */
 import type { ConfirmRequest, ResultRevisionView, RevisionOrigin } from "@/lib/contracts/trace";
 import type { FormType } from "@/lib/contracts";
-import { FIGURE_KEYS, figureValue, figureLabel, type FigureKey } from "@/components/evidence/figures";
+import { figureKeysFor, figureValue, figureLabel, type FigureKey } from "@/components/evidence/figures";
 import { PARTY_ROSTER } from "@/lib/seed/registry";
 
 export type FieldDraft = {
@@ -36,6 +36,8 @@ export type Draft = {
   baseOrigin: RevisionOrigin;
   formType: FormType;
   code: string;
+  /** Party codes of this evidence's election, in sheet order (e.g. PARTY_A… or APC, LP…). */
+  parties: string[];
   fields: Record<FigureKey, FieldDraft>;
   formTypeMeta: MetaDraft;
   codeMeta: MetaDraft;
@@ -50,12 +52,13 @@ const NO_META: MetaDraft = { aiValue: null, uncertain: false, checked: false };
 
 /** Older drafts (saved before AI fields existed) get safe defaults. */
 function normalise(d: Draft): Draft {
+  const parties = d.parties ?? [...PARTY_ROSTER];
   const fields = {} as Record<FigureKey, FieldDraft>;
-  for (const k of FIGURE_KEYS) {
+  for (const k of figureKeysFor(parties)) {
     const f = d.fields[k] as Partial<FieldDraft> & Pick<FieldDraft, "value" | "unreadable" | "fromDemo" | "flagged">;
     fields[k] = { ...f, aiValue: f.aiValue ?? null, uncertain: f.uncertain ?? false, checked: f.checked ?? false };
   }
-  return { ...d, fields, formTypeMeta: d.formTypeMeta ?? NO_META, codeMeta: d.codeMeta ?? NO_META };
+  return { ...d, parties, fields, formTypeMeta: d.formTypeMeta ?? NO_META, codeMeta: d.codeMeta ?? NO_META };
 }
 
 export function loadDraft(id: string): Draft | null {
@@ -64,7 +67,7 @@ export function loadDraft(id: string): Draft | null {
     if (!raw) return null;
     const d = JSON.parse(raw) as Draft;
     if (typeof d?.basedOnRevision !== "number" || !d.fields) return null;
-    for (const k of FIGURE_KEYS) if (!d.fields[k]) return null;
+    for (const k of figureKeysFor(d.parties ?? PARTY_ROSTER)) if (!d.fields[k]) return null;
     return normalise(d);
   } catch {
     return null;
@@ -91,13 +94,14 @@ export function clearDraft(id: string) {
 
 export const isAiDraft = (d: Draft) => d.baseOrigin === "REAL_VISION";
 
-export function draftFromRevision(r: ResultRevisionView, notice: string | null): Draft {
+export function draftFromRevision(r: ResultRevisionView, notice: string | null, roster: readonly string[]): Draft {
   const ai = r.origin === "REAL_VISION" && !r.humanConfirmed;
   // MANUAL and AI drafts leave unread fields blank (to type), not "unreadable". Elsewhere null = unreadable.
   const blankMeansEmpty = r.origin === "MANUAL" || ai;
   const uncertainSet = new Set(ai ? r.uncertainFields : []);
+  const parties = [...roster];
   const fields = {} as Record<FigureKey, FieldDraft>;
-  for (const k of FIGURE_KEYS) {
+  for (const k of figureKeysFor(parties)) {
     const v = figureValue(r, k);
     const entry = r.entries.find((e) => e.partyCode === k);
     fields[k] = {
@@ -113,6 +117,7 @@ export function draftFromRevision(r: ResultRevisionView, notice: string | null):
   return {
     basedOnRevision: r.revisionNumber,
     baseOrigin: r.origin,
+    parties,
     formType: r.formType,
     code: r.pollingUnitCodeOnSheet ?? "",
     fields,
@@ -153,7 +158,7 @@ export function blockingProblems(d: Draft): Problem[] {
     out.push({ key: "formType", message: tickMessage("Form type") });
   if (d.codeMeta.uncertain && !d.codeMeta.checked && d.code.trim() !== "" && d.code.trim() === (d.codeMeta.aiValue ?? ""))
     out.push({ key: "pollingUnitCode", message: tickMessage("Polling unit code on the sheet") });
-  for (const k of FIGURE_KEYS) {
+  for (const k of figureKeysFor(d.parties)) {
     const f = d.fields[k];
     if (f.unreadable) continue;
     const v = f.value.trim();
@@ -168,7 +173,7 @@ export function blockingProblems(d: Draft): Problem[] {
 export function consistencyChecks(d: Draft, unitCode: string): string[] {
   const out: string[] = [];
   const n = (k: FigureKey) => fieldNumber(d.fields[k]);
-  const parties = PARTY_ROSTER.map((k) => n(k));
+  const parties = d.parties.map((k) => n(k));
   const valid = n("validVotes");
   const rejected = n("rejectedVotes");
   const accredited = n("accreditedVoters");
@@ -199,7 +204,7 @@ export function toConfirmRequest(d: Draft): ConfirmRequest {
     basedOnRevision: d.basedOnRevision,
     formType: d.formType,
     pollingUnitCodeOnSheet: d.code.trim() || null,
-    entries: PARTY_ROSTER.map((k) => ({
+    entries: d.parties.map((k) => ({
       partyCode: k,
       votes: fieldNumber(d.fields[k]),
       needsReview: d.fields[k].unreadable,

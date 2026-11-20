@@ -3,7 +3,8 @@ import type { ResultRevisionView } from "@/lib/contracts/trace";
 import { PARTY_ROSTER } from "@/lib/seed/registry";
 import { partyLabel } from "@/components/client/format";
 
-export type FigureKey = (typeof PARTY_ROSTER)[number] | "accreditedVoters" | "rejectedVotes" | "validVotes";
+/** A party code from the election's roster, or one of the totals. */
+export type FigureKey = string;
 
 export const TOTAL_LABELS = {
   accreditedVoters: "Accredited voters",
@@ -11,7 +12,14 @@ export const TOTAL_LABELS = {
   validVotes: "Total valid votes",
 } as const;
 
-export const FIGURE_KEYS: FigureKey[] = [...PARTY_ROSTER, "accreditedVoters", "rejectedVotes", "validVotes"];
+export const TOTAL_KEYS = ["accreditedVoters", "rejectedVotes", "validVotes"] as const;
+/** Party rows (in roster order) followed by the totals. */
+export const figureKeysFor = (parties: readonly string[]): FigureKey[] => [...parties, ...TOTAL_KEYS];
+/** Keys for one revision: its own party codes (any election), then the totals. */
+export const figureKeysOf = (...revisions: ResultRevisionView[]): FigureKey[] =>
+  figureKeysFor([...new Set(revisions.flatMap((r) => r.entries.map((e) => e.partyCode)))]);
+/** Synthetic demo election keys (default for drafts saved before rosters were per election). */
+export const FIGURE_KEYS: FigureKey[] = figureKeysFor(PARTY_ROSTER);
 
 export const figureLabel = (k: FigureKey) => (k in TOTAL_LABELS ? TOTAL_LABELS[k as keyof typeof TOTAL_LABELS] : partyLabel(k));
 
@@ -36,7 +44,9 @@ const Num = ({ v }: { v: number | null }) => (v === null ? <Unreadable /> : <>{v
 /** Full table of one revision. Null is "Unreadable", never 0 or blank. */
 export function FiguresTable({ revision, caption }: { revision: ResultRevisionView; caption?: string }) {
   const rows: Array<[string, React.ReactNode]> = [
-    ...FIGURE_KEYS.map((k) => [figureLabel(k), <Num key={k} v={figureValue(revision, k)} />] as [string, React.ReactNode]),
+    ...figureKeysOf(revision).map(
+      (k) => [figureLabel(k), <Num key={k} v={figureValue(revision, k)} />] as [string, React.ReactNode],
+    ),
     ["Form type", FORM_TYPE_LABEL[revision.formType]],
     [
       "Polling unit code on sheet",
@@ -85,7 +95,7 @@ const show = (v: number | string | null) => (v === null ? "unreadable" : String(
 
 export function diffRevisions(prev: ResultRevisionView, next: ResultRevisionView): FieldChange[] {
   const out: FieldChange[] = [];
-  for (const k of FIGURE_KEYS) {
+  for (const k of figureKeysOf(prev, next)) {
     const a = figureValue(prev, k);
     const b = figureValue(next, k);
     if (a !== b) out.push({ label: figureLabel(k), before: show(a), after: show(b) });

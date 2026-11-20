@@ -11,7 +11,7 @@ import { DecisionStamp, DuplicateStamp, EvidenceStatusStamp, IntegrityStamp, Ori
 import {
   ChangeList,
   diffRevisions,
-  FIGURE_KEYS,
+  figureKeysOf,
   figureLabel,
   figureValue,
   FiguresTable,
@@ -546,11 +546,11 @@ function Versions({ revisions }: { revisions: ResultRevisionView[] }) {
 function uncertainLabel(key: string): string {
   if (key === "formType") return "Form type";
   if (key === "pollingUnitCode") return "Polling unit code on the sheet";
-  return (FIGURE_KEYS as string[]).includes(key) ? figureLabel(key as FigureKey) : key;
+  return figureLabel(key as FigureKey);
 }
 
 const numberChanges = (base: ResultRevisionView, next: ResultRevisionView) =>
-  FIGURE_KEYS.map((k) => ({ k, before: figureValue(base, k), after: figureValue(next, k) }));
+  figureKeysOf(base, next).map((k) => ({ k, before: figureValue(base, k), after: figureValue(next, k) }));
 
 /** Under the figures: how the confirmed version relates to the AI suggestion it started from. */
 function AiBasis({ latest, revisions }: { latest: ResultRevisionView; revisions: ResultRevisionView[] }) {

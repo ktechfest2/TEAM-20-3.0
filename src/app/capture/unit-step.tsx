@@ -31,6 +31,7 @@ export function UnitStep({
       </p>
 
       <UnitSearch
+        scope="capture"
         searchRef={searchRef}
         renderResults={(results, query, listId) => (
           <fieldset className="mt-4">

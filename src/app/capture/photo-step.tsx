@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Camera, ImageIcon, Sun, UserX, Maximize } from "lucide-react";
 import { ActionBar } from "@/components/action-bar";
 import { DemoTag } from "@/components/demo-band";
-import { ELECTIONS } from "@/lib/seed/registry";
+import { CAPTURE_ELECTION_ID, findElection } from "@/lib/seed/registry";
 import { StorageFullError, saveCapture } from "@/lib/offline/db";
 import { MAX_ORIGINAL_BYTES, type EvidenceSource, type PollingUnit } from "@/lib/contracts";
 
@@ -94,7 +94,8 @@ export function PhotoStep({
     setSaving(true);
     setError(null);
     try {
-      const election = ELECTIONS[0];
+      // New captures are always filed under the capture (synthetic demo) election, never a historical one.
+      const election = findElection(CAPTURE_ELECTION_ID) ?? { id: CAPTURE_ELECTION_ID, synthetic: true };
       const rec = await saveCapture({
         blob: file,
         fileName: file.name,

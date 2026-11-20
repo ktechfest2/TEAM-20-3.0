@@ -20,17 +20,14 @@ const UNIT = { id: "demo-pu-101", code: "DEMO.00.01.101", search: "101" };
 const SHOTS = process.env.POLLTRACE_SHOTS_DIR;
 const MOBILE = { viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true };
 
-async function shot(page: Page, name: string) {
+async function shot(page: Page, name: string, widths: number[] = [360, 1280]) {
   if (!SHOTS) return;
   mkdirSync(SHOTS, { recursive: true });
   const original = page.viewportSize();
-  for (const size of [
-    { width: 360, height: 740 },
-    { width: 1280, height: 900 },
-  ]) {
-    await page.setViewportSize(size);
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: width < 768 ? 844 : 900 });
     await page.waitForTimeout(250);
-    await page.screenshot({ path: path.join(SHOTS, `${name}-${size.width}.png`), fullPage: true });
+    await page.screenshot({ path: path.join(SHOTS, `${name}-${width}.png`), fullPage: true });
   }
   if (original) await page.setViewportSize(original);
 }
@@ -142,6 +139,33 @@ test("finder opens a unit page", async ({ page }) => {
   await link.click();
   await page.waitForURL(new RegExp(`/units/${UNIT.id}$`));
   await expect(page.getByRole("heading", { level: 1, name: UNIT.code })).toBeVisible({ timeout: 20_000 });
+});
+
+test("finder opens a real 2023 historical unit; capture cannot pick it", async ({ page }) => {
+  await page.goto("/units");
+  await page.getByLabel("Search by polling unit code or name").fill("37-01-01-001");
+  const link = page.getByRole("link", { name: /37-01-01-001/ });
+  await expect(link).toHaveCount(1);
+  await expect(link).toContainText("2023 historical");
+  await expect(link.locator(".demo-tag")).toHaveCount(0);
+  await shot(page, "units-finder-historical", [390, 1280]);
+  await link.click();
+  await page.waitForURL(/\/units\/ng23-37-01-01-001$/);
+  await expect(page.getByRole("heading", { level: 1, name: "37-01-01-001" })).toBeVisible({ timeout: 20_000 });
+  const main = page.locator("main");
+  await expect(main.getByText("2023 historical").first()).toBeVisible();
+  await expect(
+    main.getByText(/Nigeria 2\.0 independent crosscheck of 2023 result sheets\. Not INEC-certified\./),
+  ).toBeVisible();
+  // No synthetic marker anywhere in the page content (the site band explains what DEMO means).
+  await expect(main.locator(".demo-tag")).toHaveCount(0);
+  await shot(page, "unit-historical", [390, 1280]);
+
+  // Capture only offers synthetic units: a historical code finds nothing to select.
+  await page.goto("/capture");
+  await page.getByLabel("Search by polling unit code or name").fill("37-01");
+  await expect(page.getByRole("radio", { name: /37-01/ })).toHaveCount(0);
+  await expect(page.getByText(/No polling unit matches/)).toBeVisible();
 });
 
 test("two independent photos + a source-checked reference → DIFFERS FROM REFERENCE, +60", async ({ browser }) => {

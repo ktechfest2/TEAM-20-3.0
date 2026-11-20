@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, FlaskConical, Info, ScanText, TriangleAlert, WifiOff } from "lucide-react";
 import {
   EvidenceTrace,
@@ -11,10 +11,10 @@ import {
   type ResultRevisionView as Revision,
 } from "@/lib/contracts/trace";
 import type { ExtractionMode, FormType } from "@/lib/contracts";
-import { PARTY_ROSTER } from "@/lib/seed/registry";
+import { partyRosterFor } from "@/lib/seed/registry";
 import { DemoTag } from "@/components/demo-band";
 import { apiJson, issueMessages } from "@/components/client/api";
-import { figureLabel, figureValue, FIGURE_KEYS, FORM_TYPE_LABEL, Unreadable, Warnings, type FigureKey } from "@/components/evidence/figures";
+import { figureKeysFor, figureLabel, figureValue, FORM_TYPE_LABEL, Unreadable, Warnings, type FigureKey } from "@/components/evidence/figures";
 import { Stamp } from "@/components/stamp";
 import { latestRevisionOf, useTrace } from "@/components/evidence/use-trace";
 import { useOnline } from "@/lib/offline/use-network";
@@ -100,6 +100,7 @@ export function FiguresFlow({ id }: { id: string }) {
 
 function Flow({ trace, reloadTrace }: { trace: EvidenceTrace; reloadTrace: () => void }) {
   const id = trace.evidence.id;
+  const roster = partyRosterFor(trace.evidence.electionId);
   const router = useRouter();
   const params = useSearchParams();
   const online = useOnline();
@@ -132,27 +133,24 @@ function Flow({ trace, reloadTrace }: { trace: EvidenceTrace; reloadTrace: () =>
         setStale(latest);
       } else {
         // Fresh form from the latest version; it is written to this device on the first change.
-        setDraft(draftFromRevision(latest, null));
+        setDraft(draftFromRevision(latest, null, roster));
       }
     }
   }
 
-  const update = useCallback(
-    (fn: (d: Draft) => Draft) => {
-      setDraft((d) => {
-        if (!d) return d;
-        const next = fn(d);
-        setStorageWarning(!saveDraft(id, next));
-        return next;
-      });
-    },
-    [id],
-  );
+  const update = (fn: (d: Draft) => Draft) => {
+    setDraft((d) => {
+      if (!d) return d;
+      const next = fn(d);
+      setStorageWarning(!saveDraft(id, next));
+      return next;
+    });
+  };
 
   const go = (s: Step, hash = "") => router.push(`/evidence/${id}/figures?step=${s}${hash}`);
 
   const onExtracted = (res: ExtractResponse) => {
-    const d = draftFromRevision(res.revision, res.notice);
+    const d = draftFromRevision(res.revision, res.notice, roster);
     saveDraft(id, d);
     setDraft(d);
     setExtracted(res.revision);
@@ -203,7 +201,7 @@ function Flow({ trace, reloadTrace }: { trace: EvidenceTrace; reloadTrace: () =>
     if (step === "check") setResubmit((n) => n + 1);
   };
   const adoptTheirs = (m: Revision) => {
-    const d = draftFromRevision(m, null);
+    const d = draftFromRevision(m, null, roster);
     saveDraft(id, d);
     setDraft(d);
     setStale(null);
@@ -617,7 +615,7 @@ function SourceNotice({ draft, latest }: { draft: Draft; latest: Revision }) {
   if (isAiDraft(draft)) {
     const p = latest.revisionNumber === draft.basedOnRevision ? latest.provenance : null;
     const uncertain =
-      FIGURE_KEYS.filter((k) => draft.fields[k].uncertain).length +
+      figureKeysFor(draft.parties).filter((k) => draft.fields[k].uncertain).length +
       (draft.formTypeMeta.uncertain ? 1 : 0) +
       (draft.codeMeta.uncertain ? 1 : 0);
     return (
@@ -816,7 +814,7 @@ function EnterStep({
           <p aria-hidden className="px-4 pt-3 text-lg font-bold">
             Votes for each party
           </p>
-          {PARTY_ROSTER.map((k) => (
+          {draft.parties.map((k) => (
             <NumberField key={k} k={k} field={draft.fields[k]} setField={setField} showCode />
           ))}
         </fieldset>
@@ -1167,7 +1165,7 @@ function CheckStep({
       // Codes are long: full width under the label, so they never split mid-code at 360px.
       stack: true,
     },
-    ...FIGURE_KEYS.map((k) => {
+    ...figureKeysFor(draft.parties).map((k) => {
       const n = fieldNumber(draft.fields[k]);
       return {
         key: k,
@@ -1311,7 +1309,7 @@ function StaleSlip({
   onUse: () => void;
 }) {
   const diffs: string[] = [];
-  for (const k of FIGURE_KEYS) {
+  for (const k of figureKeysFor(draft.parties)) {
     const theirs = figureValue(latest, k);
     const mine = fieldNumber(draft.fields[k]);
     if (theirs !== mine) {

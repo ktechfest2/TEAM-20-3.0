@@ -3,7 +3,7 @@
 import { useDeferredValue, useId, useMemo, useState, type ReactNode, type Ref } from "react";
 import { ChevronDown } from "lucide-react";
 import type { PollingUnit } from "@/lib/contracts";
-import { POLLING_UNITS, searchPollingUnits } from "@/lib/seed/registry";
+import { POLLING_UNITS, SYNTHETIC_UNITS, searchCaptureUnits, searchPollingUnits } from "@/lib/seed/registry";
 
 const uniq = (xs: string[]) => [...new Set(xs)].sort();
 
@@ -15,8 +15,11 @@ const uniq = (xs: string[]) => [...new Set(xs)].sort();
 export function UnitSearch({
   searchRef,
   renderResults,
+  scope = "all",
 }: {
   searchRef?: Ref<HTMLInputElement>;
+  /** "capture": only units new evidence may be filed for (synthetic). "all": every unit, incl. 2023 historical. */
+  scope?: "capture" | "all";
   renderResults: (results: PollingUnit[], query: string, listId: string) => ReactNode;
 }) {
   const [query, setQuery] = useState("");
@@ -28,16 +31,17 @@ export function UnitSearch({
   const deferred = useDeferredValue(query);
   const ids = { search: useId(), hint: useId(), list: useId() };
 
-  const states = uniq(POLLING_UNITS.map((u) => u.state));
-  const lgas = uniq(POLLING_UNITS.filter((u) => u.state === state).map((u) => u.lga));
-  const wards = uniq(POLLING_UNITS.filter((u) => u.state === state && u.lga === lga).map((u) => u.ward));
+  const pool = scope === "capture" ? SYNTHETIC_UNITS : POLLING_UNITS;
+  const states = uniq(pool.map((u) => u.state));
+  const lgas = uniq(pool.filter((u) => u.state === state).map((u) => u.lga));
+  const wards = uniq(pool.filter((u) => u.state === state && u.lga === lga).map((u) => u.ward));
 
   const results = useMemo(
     () =>
-      searchPollingUnits(deferred, 50).filter(
+      (scope === "capture" ? searchCaptureUnits : searchPollingUnits)(deferred, 50).filter(
         (u) => (!state || u.state === state) && (!lga || u.lga === lga) && (!ward || u.ward === ward),
       ),
-    [deferred, state, lga, ward],
+    [deferred, state, lga, ward, scope],
   );
 
   return (

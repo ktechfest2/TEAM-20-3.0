@@ -6,13 +6,12 @@ import { z } from "zod";
 import { ArrowLeft, Ban, CircleCheck, Clock, ShieldCheck, ShieldQuestion, WifiOff } from "lucide-react";
 import { ReferenceView } from "@/lib/contracts/verification";
 import type { ReferenceType } from "@/lib/contracts";
-import { PARTY_ROSTER, findPollingUnit } from "@/lib/seed/registry";
-import { DemoTag } from "@/components/demo-band";
+import { electionForUnit, findPollingUnit, partyRosterFor } from "@/lib/seed/registry";
+import { DemoTag, RecordTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { Choice } from "@/components/choice";
 import { apiJson, issueMessages } from "@/components/client/api";
 import { fmtTime, partyLabel } from "@/components/client/format";
-import { DEMO_ELECTION_ID } from "@/components/units/labels";
 import { useOnline } from "@/lib/offline/use-network";
 
 const RefList = z.array(ReferenceView);
@@ -41,7 +40,7 @@ export function ReferencesScreen({ id }: { id: string }) {
   useEffect(() => {
     if (!unit) return;
     const ctrl = new AbortController();
-    apiJson(`/api/units/${encodeURIComponent(id)}/references?electionId=${DEMO_ELECTION_ID}`, RefList, {
+    apiJson(`/api/units/${encodeURIComponent(id)}/references?electionId=${electionForUnit(id)}`, RefList, {
       signal: ctrl.signal,
     })
       .then((r) => {
@@ -91,7 +90,7 @@ export function ReferencesScreen({ id }: { id: string }) {
     <header>
       <h1 className="text-xl md:text-2xl">Reference records</h1>
       <p className="mt-1">
-        <span className="font-mono">{unit.code}</span> {unit.name} {unit.synthetic ? <DemoTag /> : null}
+        <span className="font-mono">{unit.code}</span> {unit.name} <RecordTag synthetic={unit.synthetic} />
       </p>
     </header>
   );
@@ -554,7 +553,8 @@ function SourceReview({
 /* ------------------------------------------------------------------ add a reference */
 
 const DIGITS = /^[0-9]+$/;
-type FieldKey = "type" | "description" | "url" | (typeof PARTY_ROSTER)[number];
+/** Form fields: the fixed ones plus one per party code of this unit's election. */
+type FieldKey = string;
 
 function AddReference({
   unitId,
@@ -567,13 +567,15 @@ function AddReference({
   startOpen: boolean;
   onAdded: (ref: Ref) => void;
 }) {
+  const electionId = electionForUnit(unitId);
+  const roster = partyRosterFor(electionId);
   const uid = useId();
   const online = useOnline();
   const [open, setOpen] = useState(startOpen);
   const [type, setType] = useState<ReferenceType | null>(synthetic ? "SYNTHETIC_DEMO" : null);
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
-  const [figures, setFigures] = useState<Record<string, string>>(Object.fromEntries(PARTY_ROSTER.map((p) => [p, ""])));
+  const [figures, setFigures] = useState<Record<string, string>>(Object.fromEntries(roster.map((p) => [p, ""])));
   const [markedSynthetic, setMarkedSynthetic] = useState(synthetic);
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -585,11 +587,11 @@ function AddReference({
   const forcedSynthetic = synthetic || type === "SYNTHETIC_DEMO";
   const isSynthetic = forcedSynthetic || markedSynthetic;
   const fid = (k: FieldKey) => `${uid}-${k}`;
-  const hasTyping = Boolean(description.trim() || url.trim() || PARTY_ROSTER.some((p) => figures[p].trim()));
+  const hasTyping = Boolean(description.trim() || url.trim() || roster.some((p) => figures[p].trim()));
   const discard = () => {
     setDescription("");
     setUrl("");
-    setFigures(Object.fromEntries(PARTY_ROSTER.map((p) => [p, ""])));
+    setFigures(Object.fromEntries(roster.map((p) => [p, ""])));
     setErrors({});
     setServerError(null);
   };
@@ -601,7 +603,7 @@ function AddReference({
     const u = url.trim();
     if (u && !(/^https:\/\/\S+$/.test(u) && URL.canParse(u)))
       e.url = "Enter a full link starting with https://, or leave it empty.";
-    for (const p of PARTY_ROSTER)
+    for (const p of roster)
       if (!DIGITS.test(figures[p].trim())) e[p] = `${partyLabel(p)}: type the figure from the source.`;
     setErrors(e);
     if (Object.keys(e).length) {
@@ -618,12 +620,12 @@ function AddReference({
     const res = await apiJson("/api/references", ReferenceView, {
       method: "POST",
       body: {
-        electionId: DEMO_ELECTION_ID,
+        electionId,
         pollingUnitId: unitId,
         sourceType: type,
         sourceDescription: description.trim(),
         ...(url.trim() ? { sourceUrl: url.trim() } : {}),
-        figures: Object.fromEntries(PARTY_ROSTER.map((p) => [p, Number(figures[p].trim())])),
+        figures: Object.fromEntries(roster.map((p) => [p, Number(figures[p].trim())])),
         synthetic: isSynthetic,
       },
     });
@@ -634,7 +636,7 @@ function AddReference({
       setConfirming(false);
       setDescription("");
       setUrl("");
-      setFigures(Object.fromEntries(PARTY_ROSTER.map((p) => [p, ""])));
+      setFigures(Object.fromEntries(roster.map((p) => [p, ""])));
       onAdded(res.data);
       return;
     }
@@ -822,7 +824,7 @@ function AddReference({
             <p aria-hidden className="px-4 pt-3 text-lg font-bold">
               Figures from the source
             </p>
-            {PARTY_ROSTER.map((p) => (
+            {roster.map((p) => (
               <div key={p} className="px-4 py-3">
                 <label htmlFor={fid(p)} className="flex flex-wrap items-center gap-2 font-bold">
                   {partyLabel(p)} <span className="font-mono text-xs font-normal text-ink-muted">{p}</span>
@@ -897,7 +899,7 @@ function AddReference({
                 <div>
                   <dt className="inline font-bold">Figures: </dt>
                   <dd className="inline font-mono">
-                    {PARTY_ROSTER.map((p) => `${partyLabel(p)} ${figures[p].trim()}`).join(" · ")}
+                    {roster.map((p) => `${partyLabel(p)} ${figures[p].trim()}`).join(" · ")}
                   </dd>
                 </div>
                 {isSynthetic ? (

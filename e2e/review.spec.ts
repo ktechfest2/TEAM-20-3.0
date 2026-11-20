@@ -82,7 +82,7 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   await expect(page.getByRole("heading", { level: 1, name: /Result photo for DEMO\.01\.02\.201/ })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.getByRole("note", { name: "Demo data notice" })).toBeVisible();
+  await expect(page.getByRole("note", { name: "Test build notice" })).toBeVisible();
   await expect(page.getByText("Source integrity confirmed")).toBeVisible();
   await expect(page.getByText("No figures yet.")).toBeVisible();
   // The owner never sees review controls.
@@ -92,7 +92,12 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   // ---- Figures: choose DEMO_FIXTURE.
   await page.getByRole("link", { name: "Read the figures" }).click();
   await expect(page.getByRole("heading", { name: "Enter the figures" })).toBeVisible();
-  await expect(page.getByText("Automatic reading is not available in this version.")).toBeVisible();
+  // Either AI reading is offered (server has a vision provider configured) or the page says it is not.
+  await expect(
+    page
+      .getByText("Automatic reading is not available in this version.")
+      .or(page.getByRole("radio", { name: /Read the figures with AI/ })),
+  ).toBeVisible();
   await shot(page, "figures-mode", SIZES);
   if (SHOTS) {
     await page.setViewportSize(SIZES[0]);

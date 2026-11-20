@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { DemoTag } from "@/components/demo-band";
+import { RecordTag } from "@/components/demo-band";
 import { UnitSearch } from "@/components/units/unit-search";
 
 /** Public finder: the shared capture search, with results as links to each comparison page. */
 export function UnitFinder() {
   return (
     <UnitSearch
+      scope="all"
       renderResults={(results, query, listId) => (
         <section aria-label="Polling units" className="mt-4">
           {results.length === 0 ? (
@@ -26,7 +27,7 @@ export function UnitFinder() {
                     <span className="min-w-0 flex-1">
                       <span className="block font-mono font-semibold">{u.code}</span>
                       <span className="block">
-                        {u.name} {u.synthetic ? <DemoTag /> : null}
+                        {u.name} <RecordTag synthetic={u.synthetic} />
                       </span>
                       <span className="block text-sm text-ink-muted">
                         {u.ward} · {u.lga} · {u.state}
