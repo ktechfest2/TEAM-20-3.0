@@ -5,6 +5,7 @@
  * No real party, polling unit, ward or witness is represented here.
  */
 import type { Election, PollingUnit } from "@/lib/contracts";
+import { NG2023_ELECTION_ID, NG2023_PARTY_ROSTER, NG2023_SOURCE, NG2023_UNITS } from "./historical-ng2023";
 
 export const SYNTHETIC_DISCLAIMER = "FICTIONAL TEST DATA — NOT OFFICIAL ELECTION RESULTS";
 export const REGISTRY_SOURCE = "SYNTHETIC_DEMO";
@@ -16,6 +17,13 @@ export const ELECTIONS: readonly Election[] = [
     type: "PRESIDENTIAL",
     date: "2026-11-19",
     synthetic: true,
+  },
+  {
+    id: NG2023_ELECTION_ID,
+    name: "2023 Presidential Election (historical sample — Nigeria 2.0 crosscheck, not INEC-certified)",
+    type: "PRESIDENTIAL",
+    date: "2023-02-25",
+    synthetic: false,
   },
 ];
 
@@ -31,7 +39,8 @@ const units: Array<[id: string, code: string, name: string, lga: string, ward: s
   ["demo-pu-201", "DEMO.01.02.201", "Synthetic Civic Centre", "Demo East LGA", "Demo Riverside Ward"],
 ];
 
-export const POLLING_UNITS: readonly PollingUnit[] = units.map(([id, code, name, lga, ward]) => ({
+/** Synthetic demo units: the only units new evidence can be captured for in this build. */
+export const SYNTHETIC_UNITS: readonly PollingUnit[] = units.map(([id, code, name, lga, ward]) => ({
   id,
   registrySource: REGISTRY_SOURCE,
   code,
@@ -41,6 +50,40 @@ export const POLLING_UNITS: readonly PollingUnit[] = units.map(([id, code, name,
   ward,
   synthetic: true,
 }));
+
+/** Real 2023 units (historical sample, see historical-ng2023.ts). Reference records only. */
+export const HISTORICAL_UNITS: readonly PollingUnit[] = NG2023_UNITS.map((u) => ({
+  id: u.id,
+  registrySource: NG2023_SOURCE.id,
+  code: u.code,
+  name: u.name,
+  state: u.state,
+  lga: u.lga,
+  ward: u.ward,
+  synthetic: false,
+}));
+
+export const POLLING_UNITS: readonly PollingUnit[] = [...SYNTHETIC_UNITS, ...HISTORICAL_UNITS];
+
+/** The election new captures are filed under (synthetic demo election). */
+export const CAPTURE_ELECTION_ID = "demo-election";
+
+/** Election a polling unit belongs to in this build's registry. */
+export function electionForUnit(unitId: string): string {
+  return unitId.startsWith("ng23-") ? NG2023_ELECTION_ID : CAPTURE_ELECTION_ID;
+}
+
+/** Party roster per election (party codes as they appear on that election's result sheets). */
+export function partyRosterFor(electionId: string): readonly string[] {
+  return electionId === NG2023_ELECTION_ID ? NG2023_PARTY_ROSTER : PARTY_ROSTER;
+}
+
+/** Units a capturer may pick: synthetic demo units only (no new evidence on historical units). */
+export function searchCaptureUnits(query: string, limit = 20): PollingUnit[] {
+  return searchPollingUnits(query, 50)
+    .filter((u) => u.synthetic)
+    .slice(0, Math.max(1, Math.min(limit, 50)));
+}
 
 /** Case- and punctuation-insensitive search over code, name and location hierarchy. */
 export function searchPollingUnits(query: string, limit = 20): PollingUnit[] {
