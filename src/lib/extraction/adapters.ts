@@ -40,8 +40,8 @@ export const manualAdapter: ExtractionAdapter = {
 
 /* ------------------------------------------------------------------ DEMO_FIXTURE */
 
-export const DEMO_WARNING = "Demo fixture figures — not read from this photo.";
-export const DEMO_NOTICE = "Demo mode: these are fixed synthetic figures, not read from the photo.";
+export const DEMO_WARNING = "Sample figures — not read from this photo.";
+export const DEMO_NOTICE = "Sample figures — not read from this photo. They are fixed example figures.";
 
 /** SYNTHETIC witness figures from fixtures/demo_cases.json (witnessResult). Fictional test data. */
 export const DEMO_FIXTURE_FIGURES: Readonly<Record<string, number>> = Object.freeze({
@@ -61,7 +61,7 @@ export const demoFixtureAdapter: ExtractionAdapter = {
     if (input.synthetic !== true) {
       throw new ExtractionError(
         "MODE_UNAVAILABLE",
-        "Demo figures can only be used with synthetic demo evidence.",
+        "Sample figures can only be used with sample evidence.",
       );
     }
     const entries = Object.entries(DEMO_FIXTURE_FIGURES).map(([partyCode, votes]) => ({

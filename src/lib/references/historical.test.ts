@@ -75,9 +75,8 @@ describe("historical import", () => {
       figures: { APC: 112, LP: 12, PDP: 65, NNPP: 1 },
     });
     expect(ref.sourceDescription).toBe(
-      "Nigeria 2.0 independent crosscheck of 2023 presidential result sheets — FCT_crosschecked.csv (sha256 6734fc9b…), retrieved 2026-11-20. " +
-        "Accredited voters 191, registered 750. Sheet flags as published: stamped FALSE, corrected FALSE, invalid FALSE, unclear FALSE, unsigned UNKNOWN. " +
-        "Not INEC-certified; provenance not reviewed by PollTrace reviewers.",
+      "Nigeria 2.0 independent crosscheck of 2023 presidential result sheets (FCT_crosschecked.csv, sha256 6734fc9b…, retrieved 2026-11-20). " +
+        "Accredited voters 191, registered 750. Sheet flags as published: stamped FALSE, corrected FALSE, invalid FALSE, unclear FALSE, unsigned UNKNOWN.",
     );
     const list = (await listUnitReferences(revA, UNIT.id, null, deps())).body as ReferenceView[];
     expect(list[0]).toMatchObject({ reviewState: "NOT_REVIEWED", sourceVerified: false, synthetic: false, importedByViewer: false });
@@ -115,6 +114,7 @@ describe("public comparison for a historical unit", () => {
     expect(v.differences.map((d) => d.partyCode)).toEqual([...NG2023_PARTY_ROSTER]);
     for (const d of v.differences) expect(d).toMatchObject({ witness: null, referenceMinusWitness: null });
     expect(v.differences.find((d) => d.partyCode === "APC")?.reference).toBe(112);
+    expect(v.reasons[0]).toBe("No witness photos have been submitted in PollTrace for this polling unit.");
     expect(JSON.stringify(v.reasons)).not.toMatch(/PARTY_|fraud|verified/i);
   });
 

@@ -161,7 +161,7 @@ export async function runExtractionWith(
       throw new ExtractionError(
         "MODE_UNAVAILABLE",
         requested === "DEMO_FIXTURE"
-          ? "Demo figures can only be used with synthetic demo evidence."
+          ? "Sample figures can only be used with sample evidence."
           : requested === "REAL_VISION"
             ? "Automatic reading is not configured on this server. Use manual entry."
             : `Extraction mode ${requested} is not available.`,

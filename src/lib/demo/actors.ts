@@ -8,7 +8,7 @@ import { DEMO_REVIEWERS } from "@/lib/auth/demo-reviewers";
 type Actor = Omit<ContributorRecord, "createdAt">;
 const witness = (n: 1 | 2 | 3): Actor => ({
   id: `de000000-0000-4000-8000-0000000c000${n}`,
-  alias: `Synthetic Demo Witness ${n}`,
+  alias: `Sample witness ${n}`,
   role: "CONTRIBUTOR",
   assurance: "SYNTHETIC_DEMO",
   synthetic: true,
@@ -28,6 +28,11 @@ export const DEMO_SUBMISSION_IDS = {
   duplicate: "de000000-0000-4000-8000-0000000d0003",
 } as const;
 
-export const DEMO_REFERENCE_DESCRIPTION = "Synthetic demo reference record (fictional) for the guided demo";
+export const DEMO_REFERENCE_DESCRIPTION = "Sample reference record (fictional) for the guided demo";
+/** Current + earlier wording: reference rows are immutable, so live rows may carry the old text. */
+export const DEMO_REFERENCE_DESCRIPTIONS: readonly string[] = [
+  DEMO_REFERENCE_DESCRIPTION,
+  "Synthetic demo reference record (fictional) for the guided demo",
+];
 export const DEMO_REFERENCE_FIGURES = { PARTY_A: 145, PARTY_B: 270, PARTY_C: 42 } as const;
 export const DEMO_WITNESS_FIGURES = { PARTY_A: 145, PARTY_B: 210, PARTY_C: 42 } as const;

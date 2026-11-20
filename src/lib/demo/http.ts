@@ -10,7 +10,7 @@ import { clientIp, demoEnabled, demoFailureLimiter, passcodeMatches } from "./ad
  */
 export async function demoAdminGate(request: Request): Promise<{ ok: true } | { ok: false; response: Response }> {
   if (!demoEnabled()) {
-    return { ok: false, response: json(403, errorBody("DEMO_DISABLED", "Demo mode is not configured on this server.")) };
+    return { ok: false, response: json(403, errorBody("DEMO_DISABLED", "The guided sample walkthrough is not configured on this server.")) };
   }
   const limiter = demoFailureLimiter();
   const ip = clientIp(request);

@@ -18,6 +18,7 @@ import type { EvidenceRecord, EvidenceStorage } from "@/lib/storage";
 import { demoEnabled } from "./admin";
 import {
   DEMO_REFERENCE_DESCRIPTION,
+  DEMO_REFERENCE_DESCRIPTIONS,
   DEMO_REFERENCE_FIGURES,
   DEMO_REVIEWER_A,
   DEMO_REVIEWER_B,
@@ -43,13 +44,13 @@ const STAGES = DemoStageId.options;
 
 const SUMMARIES: Record<DemoStageId, string> = {
   WITNESSES:
-    "Synthetic Demo Witness 1 and 2 upload different photos of the same synthetic sheet, load the demo figures and confirm 145 / 210 / 42.",
+    "Sample witness 1 and 2 upload different photos of the same sample sheet, load the sample figures and confirm 145 / 210 / 42.",
   DUPLICATE:
-    "Synthetic Demo Witness 3 uploads an exact copy of Witness 1's file (same SHA-256 fingerprint). A copy is not a new witness.",
+    "Sample witness 3 uploads an exact copy of witness 1's file (same SHA-256 fingerprint). A copy is not a new witness.",
   REVIEWS:
-    "Synthetic Reviewer A accepts all three. Witness 1 and 2 are marked independent; the copy is accepted but not counted as independent.",
+    "Reviewer A accepts all three. Witness 1 and 2 are marked independent; the copy is accepted but not counted as independent.",
   REFERENCE:
-    "Synthetic Reviewer B records a fictional reference (145 / 270 / 42) and Reviewer A checks its source. PARTY_B differs by +60 from the reference's perspective.",
+    "Reviewer B records a fictional reference (145 / 270 / 42) and Reviewer A checks its source. PARTY_B differs by +60 from the reference's perspective.",
 };
 
 const P = (a: { id: string; role: "CONTRIBUTOR" | "REVIEWER"; alias: string }): Principal => ({
@@ -99,7 +100,7 @@ async function snapshot(d: DemoDeps): Promise<Snapshot> {
   ]);
   const demoRef =
     refs
-      .filter((r) => r.createdBy === DEMO_REVIEWER_B.id && r.sourceType === "SYNTHETIC_DEMO" && r.sourceDescription === DEMO_REFERENCE_DESCRIPTION)
+      .filter((r) => r.createdBy === DEMO_REVIEWER_B.id && r.sourceType === "SYNTHETIC_DEMO" && DEMO_REFERENCE_DESCRIPTIONS.includes(r.sourceDescription))
       .at(-1) ?? null;
   const refReviews = demoRef ? await repo.listReferenceReviews([demoRef.id]) : [];
 
@@ -189,7 +190,7 @@ async function witnessSubmits(d: DemoDeps, actor: typeof DEMO_WITNESS_1, csid: s
   if (!latest) {
     expectOk(`extract:${actor.alias}`, await extractEvidence(p, id, { mode: "DEMO_FIXTURE" }, deps));
     latest = latestRevision(await d.storage.repo.listRevisions([id]));
-    actions.push(`${actor.alias} loaded demo figures`);
+    actions.push(`${actor.alias} loaded sample figures`);
   }
   if (latest && !latest.humanConfirmed) {
     expectOk(
@@ -205,7 +206,7 @@ async function witnessSubmits(d: DemoDeps, actor: typeof DEMO_WITNESS_1, csid: s
           accreditedVoters: null,
           rejectedVotes: null,
           validVotes: 397,
-          note: "Synthetic demo witness confirmation.",
+          note: "Sample witness confirmation.",
         },
         deps,
       ),
@@ -228,9 +229,9 @@ async function runStageSteps(stage: DemoStageId, d: DemoDeps, s: Snapshot, actio
       return;
     case "REVIEWS": {
       const plan: Array<[EvidenceRecord | null, "REVIEWER_CONFIRMED" | "UNVERIFIED", string]> = [
-        [s.e1, "REVIEWER_CONFIRMED", "Synthetic demo: figures legible; a distinct original from a different witness."],
-        [s.e2, "REVIEWER_CONFIRMED", "Synthetic demo: figures legible; a distinct original from a different witness."],
-        [s.e3, "UNVERIFIED", "Synthetic demo: figures legible, but this file is an exact copy of another submission; independence not established."],
+        [s.e1, "REVIEWER_CONFIRMED", "Sample: figures legible; a distinct original from a different witness."],
+        [s.e2, "REVIEWER_CONFIRMED", "Sample: figures legible; a distinct original from a different witness."],
+        [s.e3, "UNVERIFIED", "Sample: figures legible, but this file is an exact copy of another submission; independence not established."],
       ];
       for (const [e, independenceStatus, reason] of plan) {
         if (!e || s.accepted(e)) continue;
@@ -258,12 +259,12 @@ async function runStageSteps(stage: DemoStageId, d: DemoDeps, s: Snapshot, actio
           ),
         );
         refId = (r.body as { id: string }).id;
-        actions.push("Reviewer B recorded the synthetic reference");
+        actions.push("Reviewer B recorded the sample reference");
       }
       if (!s.referenceConfirmed || s.referenceId !== refId) {
         expectOk(
           "reference:review",
-          await reviewReference(revA, refId, { decision: "SOURCE_CONFIRMED", reason: "Synthetic demo: source provenance checked (fictional record)." }, deps),
+          await reviewReference(revA, refId, { decision: "SOURCE_CONFIRMED", reason: "Sample: source provenance checked (fictional record)." }, deps),
         );
         actions.push("Reviewer A confirmed the reference source");
       }

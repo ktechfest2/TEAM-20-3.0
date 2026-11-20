@@ -26,13 +26,13 @@ const fileName = NG2023_SOURCE.file.split("/").at(-1)!;
 
 /** Plain provenance text stored on the reference (shown to people as-is). */
 export function ng2023ReferenceDescription(u: Ng2023Unit): string {
+  // The UI states "not INEC-certified / provenance not reviewed" itself, so it is not repeated here.
   return (
-    `Nigeria 2.0 independent crosscheck of 2023 presidential result sheets — ${fileName} ` +
-    `(sha256 ${NG2023_SOURCE.fileSha256.slice(0, 8)}…), retrieved ${NG2023_SOURCE.retrievedAt}. ` +
+    `Nigeria 2.0 independent crosscheck of 2023 presidential result sheets (${fileName}, ` +
+    `sha256 ${NG2023_SOURCE.fileSha256.slice(0, 8)}…, retrieved ${NG2023_SOURCE.retrievedAt}). ` +
     `Accredited voters ${stated(u.accreditedVoters)}, registered ${stated(u.registeredVoters)}. ` +
     `Sheet flags as published: stamped ${u.sheet.stamped}, corrected ${u.sheet.corrected}, invalid ${u.sheet.invalid}, ` +
-    `unclear ${u.sheet.unclear}, unsigned ${u.sheet.unsigned}. ` +
-    `Not INEC-certified; provenance not reviewed by PollTrace reviewers.`
+    `unclear ${u.sheet.unclear}, unsigned ${u.sheet.unsigned}.`
   );
 }
 

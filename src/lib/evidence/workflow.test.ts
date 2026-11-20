@@ -10,6 +10,11 @@ import { createFixedWindowLimiter } from "./rate-limit";
 import { sha256HexNode, submitEvidence, type ServiceResult } from "./service";
 import { finalizeUpload, initUpload } from "./uploads";
 import { deriveEvidenceStatus } from "./views";
+import { findPollingUnit } from "@/lib/seed/registry";
+
+/** Read from the registry (sample codes/names can be relabelled without breaking tests). */
+const UNIT_012 = findPollingUnit("demo-pu-012")!;
+const OTHER_CODE = `${UNIT_012.code}9`; // a different unit code
 import { confirmEvidence, extractEvidence, getReviewQueue, getTrace, reviewEvidence, type WorkflowDeps } from "./workflow";
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 1, 2, 3]);
@@ -70,7 +75,7 @@ async function upload(p: Principal, bytes = JPEG, capturedAtClaimed = "2026-11-1
 const confirmBody = (basedOnRevision: number, over: Record<string, unknown> = {}) => ({
   basedOnRevision,
   formType: "EC8A",
-  pollingUnitCodeOnSheet: "DEMO.00.00.012",
+  pollingUnitCodeOnSheet: UNIT_012.code,
   entries: [
     { partyCode: "PARTY_A", votes: 145, needsReview: false },
     { partyCode: "PARTY_B", votes: 210, needsReview: false },
@@ -253,10 +258,10 @@ describe("review decisions", () => {
   });
 
   it.each([
-    ["different unit on the sheet", "DEMO.00.00.099", "ACCEPTED", 409, "PU_CODE_MISMATCH"],
-    ["different unit, FLAGGED allowed", "DEMO.00.00.099", "FLAGGED", 201, undefined],
-    ["different unit, REJECTED allowed", "DEMO.00.00.099", "REJECTED", 201, undefined],
-    ["same code, other punctuation", "demo 00-00-012", "ACCEPTED", 201, undefined],
+    ["different unit on the sheet", OTHER_CODE, "ACCEPTED", 409, "PU_CODE_MISMATCH"],
+    ["different unit, FLAGGED allowed", OTHER_CODE, "FLAGGED", 201, undefined],
+    ["different unit, REJECTED allowed", OTHER_CODE, "REJECTED", 201, undefined],
+    ["same code, other punctuation", UNIT_012.code.replace(/[-.]/g, " ").toLowerCase(), "ACCEPTED", 201, undefined],
     ["code unreadable (null)", null, "ACCEPTED", 201, undefined],
   ] as const)("PU code on sheet: %s -> %s %i", async (_n, sheetCode, decision, status, c) => {
     const id = await upload(alice);
@@ -266,7 +271,7 @@ describe("review decisions", () => {
     expect(r.status).toBe(status);
     if (c) {
       expect(code(r)).toBe(c);
-      expect(r.body).toMatchObject({ error: { sheetCode, registryCode: "DEMO.00.00.012" } });
+      expect(r.body).toMatchObject({ error: { sheetCode, registryCode: UNIT_012.code } });
       expect(await storage.repo.listReviews([id])).toHaveLength(0);
     }
   });
@@ -300,7 +305,8 @@ describe("revisions", () => {
     expect(r.status).toBe(201);
     const body = r.body as { revision: ResultRevisionView; modeUsed: string; notice: string; availableModes: string[] };
     expect(body.modeUsed).toBe("DEMO_FIXTURE");
-    expect(body.notice).toMatch(/not read from the photo/);
+    expect(body.notice).toMatch(/not read from this photo/);
+    expect(body.notice).not.toMatch(/demo|synthetic/i);
     expect(body.revision).toMatchObject({ revisionNumber: 1, origin: "DEMO_FIXTURE", extractionMode: "DEMO_FIXTURE", humanConfirmed: false, basedOnRevision: null, createdByViewer: true });
     expect((await storage.repo.listAudit(id)).map((a) => a.eventType)).toContain("EXTRACTION_CREATED");
   });
@@ -383,7 +389,7 @@ describe("revisions", () => {
   it("confirm merges sheet-code + sum warnings, de-duplicated", async () => {
     const id = await upload(alice);
     await extract(alice, id);
-    const r = await confirm(alice, id, confirmBody(1, { pollingUnitCodeOnSheet: "DEMO.00.00.099", validVotes: 400 }));
+    const r = await confirm(alice, id, confirmBody(1, { pollingUnitCodeOnSheet: OTHER_CODE, validVotes: 400 }));
     expect(r.status).toBe(201);
     const w = (r.body as ResultRevisionView).warnings;
     expect(w.length).toBeGreaterThanOrEqual(2);
@@ -419,7 +425,7 @@ describe("queue and trace", () => {
     expect(q.items.map((i) => i.id)).toEqual([e1, e2, e3]);
     expect(q.synthetic).toBe(true);
     const by = Object.fromEntries(q.items.map((i) => [i.id, i]));
-    expect(by[e1]).toMatchObject({ exactDuplicateCount: 1, submittedByViewer: false, reviewCount: 0, lastDecision: null, pollingUnitCode: "DEMO.00.00.012" });
+    expect(by[e1]).toMatchObject({ exactDuplicateCount: 1, submittedByViewer: false, reviewCount: 0, lastDecision: null, pollingUnitCode: UNIT_012.code });
     expect(by[e2]).toMatchObject({ exactDuplicateCount: 1, status: "PENDING_REVIEW", lastDecision: "FLAGGED", reviewCount: 1 });
     expect(by[e3]).toMatchObject({ submittedByViewer: true, exactDuplicateCount: 1 }); // e4 shares JPEG2
   });
@@ -452,7 +458,7 @@ describe("queue and trace", () => {
     for (const e of t.timeline) expect(e.summary).not.toMatch(/verif|fraud|authentic|rigg|fake/i);
     expect(t.revisions.map((r) => r.revisionNumber)).toEqual([1, 2]);
     expect(t.reviews.map((r) => [r.decision, r.byViewer])).toEqual([["FLAGGED", true], ["ACCEPTED", false]]);
-    expect(t.evidence).toMatchObject({ status: "ACCEPTED", synthetic: true, storageMode: "LOCAL_DEV", pollingUnitName: "Synthetic Community Hall" });
+    expect(t.evidence).toMatchObject({ status: "ACCEPTED", synthetic: true, storageMode: "LOCAL_DEV", pollingUnitName: UNIT_012.name });
     const s = JSON.stringify(t);
     expect(s).not.toMatch(/originalPath|originals\/|contributorId|Anon A|Synthetic Demo Reviewer/);
   });

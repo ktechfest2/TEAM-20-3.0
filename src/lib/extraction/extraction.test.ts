@@ -136,7 +136,7 @@ describe("MANUAL and DEMO_FIXTURE shapes", () => {
       accreditedVoters: null,
     });
     expect(r.draft.warnings).toEqual([DEMO_WARNING]);
-    expect(r.notice).toBe("Demo mode: these are fixed synthetic figures, not read from the photo.");
+    expect(r.notice).toBe("Sample figures — not read from this photo. They are fixed example figures.");
   });
 });
 

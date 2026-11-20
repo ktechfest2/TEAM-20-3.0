@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { EvidenceTrace, ExtractResponse, ResultRevisionView } from "@/lib/contracts/trace";
 import type { Principal } from "@/lib/auth/session";
 import { ExtractionError, runExtraction, type ExtractionRun } from "@/lib/extraction";
+import { findPollingUnit } from "@/lib/seed/registry";
 import { createLocalStorage } from "@/lib/storage/local";
 import type { ContributorRecord, EvidenceStorage } from "@/lib/storage";
 import { createFixedWindowLimiter } from "./rate-limit";
@@ -60,7 +61,7 @@ const deps = (): WorkflowDeps => ({
 const visionRun = (over: Partial<ExtractionRun> = {}): ExtractionRun => ({
   draft: {
     formType: "EC8A",
-    pollingUnitCode: "DEMO.00.00.012",
+    pollingUnitCode: findPollingUnit("demo-pu-012")!.code,
     entries: [
       { partyCode: "PARTY_A", votes: 145, needsReview: false },
       { partyCode: "PARTY_B", votes: null, needsReview: true },
@@ -106,7 +107,7 @@ const auditTypes = async (id: string) => (await storage.repo.listAudit(id)).map(
 const confirmBody = (basedOnRevision: number) => ({
   basedOnRevision,
   formType: "EC8A",
-  pollingUnitCodeOnSheet: "DEMO.00.00.012",
+  pollingUnitCodeOnSheet: findPollingUnit("demo-pu-012")!.code,
   entries: [
     { partyCode: "PARTY_A", votes: 145, needsReview: false },
     { partyCode: "PARTY_B", votes: 210, needsReview: false },

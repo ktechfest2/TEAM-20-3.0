@@ -552,7 +552,7 @@ export const AI_SUGGESTED_SUMMARY = "An AI model suggested figures — not check
 export const AI_CONFIRMED_SUMMARY = "A person checked the figures against the photo and confirmed them.";
 
 const EXTRACTION_SUMMARY: Record<string, string> = {
-  DEMO_FIXTURE: "demo figures from a synthetic fixture were loaded. They were not read from this photo.",
+  DEMO_FIXTURE: "sample figures were loaded. They were not read from this photo.",
   REAL_VISION: "figures were read from the photo by an automated vision model. They need a person to check them.",
   MANUAL: "a blank form was opened for manual entry. No figures were read automatically.",
 };

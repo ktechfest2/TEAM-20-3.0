@@ -41,12 +41,11 @@ const stated = (n) => (n === null || n === undefined ? "not stated" : String(n))
 export function referenceDescription(u, source) {
   const fileName = source.file.split("/").at(-1);
   return (
-    `Nigeria 2.0 independent crosscheck of 2023 presidential result sheets — ${fileName} ` +
-    `(sha256 ${source.fileSha256.slice(0, 8)}…), retrieved ${source.retrievedAt}. ` +
+    `Nigeria 2.0 independent crosscheck of 2023 presidential result sheets (${fileName}, ` +
+    `sha256 ${source.fileSha256.slice(0, 8)}…, retrieved ${source.retrievedAt}). ` +
     `Accredited voters ${stated(u.accreditedVoters)}, registered ${stated(u.registeredVoters)}. ` +
     `Sheet flags as published: stamped ${u.sheet.stamped}, corrected ${u.sheet.corrected}, invalid ${u.sheet.invalid}, ` +
-    `unclear ${u.sheet.unclear}, unsigned ${u.sheet.unsigned}. ` +
-    `Not INEC-certified; provenance not reviewed by PollTrace reviewers.`
+    `unclear ${u.sheet.unclear}, unsigned ${u.sheet.unsigned}.`
   );
 }
 

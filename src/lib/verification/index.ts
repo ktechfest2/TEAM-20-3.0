@@ -235,7 +235,11 @@ export function computeVerification(rawInput: VerificationInput): UnitVerificati
   const reasons: string[] = [];
   switch (status) {
     case "NO_EVIDENCE":
-      reasons.push("No photos have been submitted for this polling unit yet.");
+      reasons.push(
+        reference?.sourceType === "HISTORICAL_DATASET"
+          ? "No witness photos have been submitted in PollTrace for this polling unit."
+          : "No photos have been submitted for this polling unit yet.",
+      );
       break;
     case "PENDING_REVIEW":
       reasons.push(

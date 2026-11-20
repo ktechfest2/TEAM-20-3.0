@@ -114,10 +114,10 @@ export async function importReference(p: Principal | null, body: unknown, deps: 
   }
 
   if ((election.synthetic || unit.synthetic) && !req.synthetic) {
-    return fail(400, "SYNTHETIC_REQUIRED", "This election or polling unit is synthetic demo data, so the reference must be marked synthetic.");
+    return fail(400, "SYNTHETIC_REQUIRED", "This polling unit is sample data, so the reference must be flagged as sample (synthetic: true).");
   }
   if (req.sourceType === "SYNTHETIC_DEMO" && !req.synthetic) {
-    return fail(400, "SYNTHETIC_REQUIRED", "A SYNTHETIC_DEMO reference must be marked synthetic.");
+    return fail(400, "SYNTHETIC_REQUIRED", "A SYNTHETIC_DEMO reference must be flagged as sample (synthetic: true).");
   }
 
   const createdAt = nowIso(deps);

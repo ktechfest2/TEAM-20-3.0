@@ -10,7 +10,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getStorage, localDataDir, type ContributorRecord, type EvidenceStorage } from "@/lib/storage";
-import { demoReviewersEnabled, isDemoReviewerId } from "./demo-reviewers";
+import { DEMO_REVIEWERS, demoReviewersEnabled, isDemoReviewerId } from "./demo-reviewers";
 
 export const SESSION_COOKIE = "pt_session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days: offline queues can be old
@@ -117,7 +117,9 @@ export async function getPrincipal(
   if (!c) return null;
   // Demo reviewer identities stop working the moment the flag is off.
   if (isDemoReviewerId(c.id) && !demoReviewersEnabled()) return null;
-  return { contributorId: c.id, role: c.role, alias: c.alias, synthetic: c.synthetic };
+  // Sample reviewer display names come from code (stored rows may carry older wording).
+  const alias = DEMO_REVIEWERS.find((r) => r.id === c.id)?.alias ?? c.alias;
+  return { contributorId: c.id, role: c.role, alias, synthetic: c.synthetic };
 }
 
 /** Opaque, stable pseudonym for a contributor (lets reviewers spot same-source submissions without the alias). */

@@ -13,7 +13,7 @@ export const REGISTRY_SOURCE = "SYNTHETIC_DEMO";
 export const ELECTIONS: readonly Election[] = [
   {
     id: "demo-election",
-    name: "Synthetic Civic Demo Election",
+    name: "Sample Presidential Election (fictional)",
     type: "PRESIDENTIAL",
     date: "2026-11-19",
     synthetic: true,
@@ -30,13 +30,15 @@ export const ELECTIONS: readonly Election[] = [
 export const PARTY_ROSTER = ["PARTY_A", "PARTY_B", "PARTY_C"] as const;
 
 const units: Array<[id: string, code: string, name: string, lga: string, ward: string]> = [
-  ["demo-pu-012", "DEMO.00.00.012", "Synthetic Community Hall", "Demo LGA", "Demo Ward"],
-  ["demo-pu-001", "DEMO.00.00.001", "Synthetic Primary School I", "Demo LGA", "Demo Ward"],
-  ["demo-pu-002", "DEMO.00.00.002", "Synthetic Primary School II", "Demo LGA", "Demo Ward"],
-  ["demo-pu-007", "DEMO.00.00.007", "Synthetic Market Square", "Demo LGA", "Demo Ward"],
-  ["demo-pu-101", "DEMO.00.01.101", "Synthetic Health Centre", "Demo LGA", "Demo North Ward"],
-  ["demo-pu-102", "DEMO.00.01.102", "Synthetic Town Library", "Demo LGA", "Demo North Ward"],
-  ["demo-pu-201", "DEMO.01.02.201", "Synthetic Civic Centre", "Demo East LGA", "Demo Riverside Ward"],
+  // Fictional sample units in INEC code format. State code 99 does not exist, so these can never
+  // collide with a real polling unit. Ids are unchanged (stored evidence references them).
+  ["demo-pu-012", "99-04-07-012", "Community Hall", "Central LGA", "Market Ward"],
+  ["demo-pu-001", "99-04-07-001", "Primary School I", "Central LGA", "Market Ward"],
+  ["demo-pu-002", "99-04-07-002", "Primary School II", "Central LGA", "Market Ward"],
+  ["demo-pu-007", "99-04-07-007", "Market Square", "Central LGA", "Market Ward"],
+  ["demo-pu-101", "99-04-08-101", "Health Centre", "Central LGA", "Hill Ward"],
+  ["demo-pu-102", "99-04-08-102", "Town Library", "Central LGA", "Hill Ward"],
+  ["demo-pu-201", "99-05-02-201", "Civic Centre", "North LGA", "River Ward"],
 ];
 
 /** Synthetic demo units: the only units new evidence can be captured for in this build. */
@@ -45,7 +47,7 @@ export const SYNTHETIC_UNITS: readonly PollingUnit[] = units.map(([id, code, nam
   registrySource: REGISTRY_SOURCE,
   code,
   name,
-  state: "Demo State",
+  state: "Sample State",
   lga,
   ward,
   synthetic: true,

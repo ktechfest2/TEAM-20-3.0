@@ -12,14 +12,14 @@ type Env = Record<string, string | undefined>;
 export const DEMO_REVIEWERS: readonly Omit<ContributorRecord, "createdAt">[] = [
   {
     id: "de000000-0000-4000-8000-00000000a001",
-    alias: "Synthetic Demo Reviewer A",
+    alias: "Reviewer A",
     role: "REVIEWER",
     assurance: "SYNTHETIC_DEMO",
     synthetic: true,
   },
   {
     id: "de000000-0000-4000-8000-00000000b002",
-    alias: "Synthetic Demo Reviewer B",
+    alias: "Reviewer B",
     role: "REVIEWER",
     assurance: "SYNTHETIC_DEMO",
     synthetic: true,
@@ -29,11 +29,11 @@ export const DEMO_REVIEWERS: readonly Omit<ContributorRecord, "createdAt">[] = [
 export const demoReviewersEnabled = (env: Env = process.env) => env.POLLTRACE_DEMO_REVIEWERS === "1";
 export const isDemoReviewerId = (id: string) => DEMO_REVIEWERS.some((r) => r.id === id);
 
-export const INVALID_REVIEWER_PASSCODE = "Invalid demo reviewer passcode";
+export const INVALID_REVIEWER_PASSCODE = "Invalid sample reviewer passcode";
 
 /** Returns null if allowed, otherwise a reason. */
 export function demoReviewerLoginDenied(passcode: string | undefined, env: Env = process.env): string | null {
-  if (!demoReviewersEnabled(env)) return "Demo reviewer identities are disabled";
+  if (!demoReviewersEnabled(env)) return "Sample reviewer accounts are disabled on this server";
   const expected = env.POLLTRACE_DEMO_REVIEWER_PASSCODE?.trim();
   if (!expected) {
     return env.NODE_ENV === "production" ? "POLLTRACE_DEMO_REVIEWER_PASSCODE must be set in production" : null;
