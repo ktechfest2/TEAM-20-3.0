@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CircleCheck, CircleDashed, ScanText, Copy, FileQuestion, User, WifiOff } from "lucide-react";
 import { ReviewQueueResponse, type ReviewQueueItem } from "@/lib/contracts/trace";
-import { DemoTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { apiJson } from "@/components/client/api";
 import { DECISION_WORD, fmtTime, plural, SOURCE_SHORT } from "@/components/client/format";
@@ -190,7 +189,7 @@ function UnitCell({ item }: { item: ReviewQueueItem }) {
     <div>
       <p className="font-mono font-semibold">{item.pollingUnitCode}</p>
       <p>
-        {item.pollingUnitName} {item.synthetic ? <DemoTag /> : null}
+        {item.pollingUnitName}
       </p>
     </div>
   );
@@ -208,7 +207,7 @@ function FiguresCell({ item }: { item: ReviewQueueItem }) {
         <Stamp small label="Figures not confirmed" icon={CircleDashed} tone="local" />
         {r.origin === "DEMO_FIXTURE" ? (
           <span className="inline-flex items-center gap-1 text-sm">
-            <DemoTag /> demo figures
+            sample figures, not read from the photo
           </span>
         ) : null}
       </span>

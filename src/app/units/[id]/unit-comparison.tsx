@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { CircleCheck, CircleMinus, Copy, TriangleAlert, WifiOff } from "lucide-react";
 import { UnitVerification, ReferenceView, type FieldDifference } from "@/lib/contracts/verification";
 import { z } from "zod";
-import { DemoTag, HistoricalTag, RecordTag } from "@/components/demo-band";
+import { HistoricalTag, RecordTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { apiJson } from "@/components/client/api";
 import { fmtTime, INDEPENDENCE_LINE, partyLabel, plural } from "@/components/client/format";
@@ -335,7 +335,7 @@ function ComparisonTable({
         <caption className="pb-2 text-left">
           <span className="flex flex-wrap items-center gap-2 font-bold">
             {hasRef ? "Witness figures compared with the reference record" : "Reviewed witness figures"}
-            {v.synthetic ? <DemoTag /> : null}
+           
           </span>
           {hasRef ? <span className="block text-sm">Difference = reference minus witness</span> : null}
         </caption>
@@ -624,7 +624,7 @@ function ReferenceSlip({
           ) : (
             REFERENCE_TYPE_LINE[r.sourceType]
           )}
-          {r.synthetic ? <DemoTag /> : null}
+         
         </p>
       </div>
       <dl className="grid gap-3 px-4 py-3">

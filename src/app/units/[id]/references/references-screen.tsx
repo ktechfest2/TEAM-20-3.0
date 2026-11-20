@@ -7,7 +7,7 @@ import { ArrowLeft, Ban, CircleCheck, Clock, ShieldCheck, ShieldQuestion, WifiOf
 import { ReferenceView } from "@/lib/contracts/verification";
 import type { ReferenceType } from "@/lib/contracts";
 import { electionForUnit, findPollingUnit, partyRosterFor } from "@/lib/seed/registry";
-import { DemoTag, RecordTag } from "@/components/demo-band";
+import { HistoricalTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { Choice } from "@/components/choice";
 import { apiJson, issueMessages } from "@/components/client/api";
@@ -18,7 +18,7 @@ const RefList = z.array(ReferenceView);
 type Ref = ReferenceView;
 
 const TYPE_LINE: Record<ReferenceType, string> = {
-  SYNTHETIC_DEMO: "Synthetic demo reference (not real)",
+  SYNTHETIC_DEMO: "Sample reference (fictional)",
   MANUAL_IREV: "Typed in from a public IReV page",
   HISTORICAL_DATASET: "From a historical dataset",
 };
@@ -90,7 +90,7 @@ export function ReferencesScreen({ id }: { id: string }) {
     <header>
       <h1 className="text-xl md:text-2xl">Reference records</h1>
       <p className="mt-1">
-        <span className="font-mono">{unit.code}</span> {unit.name} <RecordTag synthetic={unit.synthetic} />
+        <span className="font-mono">{unit.code}</span> {unit.name} {unit.synthetic ? null : <HistoricalTag />}
       </p>
     </header>
   );
@@ -241,7 +241,7 @@ function VersionSlip({
           Version {r.version}
         </h3>
         <p className="flex flex-wrap items-center gap-2">
-          {TYPE_LINE[r.sourceType]} {r.synthetic ? <DemoTag /> : null}
+          {TYPE_LINE[r.sourceType]}
         </p>
         <p className="text-sm text-ink-muted">
           {r.importedByViewer ? "Added by you" : "Added by another reviewer"} ·{" "}
@@ -741,7 +741,7 @@ function AddReference({
           <fieldset id={fid("type")} disabled={confirming}>
             <legend className="text-lg font-bold">Where are these figures from?</legend>
             {synthetic ? (
-              <p className="mt-1 text-sm">This is a demo polling unit, so only a synthetic reference can be added.</p>
+              <p className="mt-1 text-sm">This is a sample polling unit, so only a sample reference can be added.</p>
             ) : null}
             <div className="mt-2 grid gap-2">
               {!synthetic ? (
@@ -768,10 +768,10 @@ function AddReference({
                 onChange={() => setType("SYNTHETIC_DEMO")}
                 title={
                   <span className="flex flex-wrap items-center gap-2">
-                    Synthetic demo reference <DemoTag />
+                    Sample reference
                   </span>
                 }
-                text="Made-up figures for the demo. Not real."
+                text="Made-up figures for testing. Not real."
               />
             </div>
           </fieldset>
@@ -854,8 +854,8 @@ function AddReference({
               className="mt-1 size-5 shrink-0 accent-primary"
             />
             <span>
-              <span className="font-bold">This is synthetic demo data</span>
-              {synthetic ? <span className="block text-sm">Required: this is a demo polling unit.</span> : null}
+              <span className="font-bold">These are sample (fictional) figures</span>
+              {synthetic ? <span className="block text-sm">Required: this is a sample polling unit.</span> : null}
             </span>
           </label>
 
@@ -906,7 +906,7 @@ function AddReference({
                   <div>
                     <dt className="inline font-bold">Data: </dt>
                     <dd className="inline">
-                      Synthetic demo <DemoTag />
+                      Sample (fictional)
                     </dd>
                   </div>
                 ) : null}

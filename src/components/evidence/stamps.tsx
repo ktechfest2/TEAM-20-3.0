@@ -38,7 +38,7 @@ export function OriginStamp({ origin, small = false }: { origin: RevisionOrigin;
     case "MANUAL":
       return <Stamp small={small} label="Typed in, not confirmed yet" icon={Keyboard} tone="outline" />;
     case "DEMO_FIXTURE":
-      return <Stamp small={small} label="Demo figures — not read from this photo" icon={FlaskConical} tone="demo" />;
+      return <Stamp small={small} label="Sample figures — not read from this photo" icon={FlaskConical} tone="outline" />;
     case "REAL_VISION":
       return <Stamp small={small} label="AI suggestion — not checked" icon={ScanText} tone="outline" />;
   }

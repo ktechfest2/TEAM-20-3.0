@@ -57,8 +57,8 @@ async function assertPhotoAndFieldVisible(page: Page, label: string, file?: stri
 
 async function captureAndUpload(page: Page): Promise<string> {
   await page.goto("/capture");
-  await page.getByLabel("Search by polling unit code or name").fill("201");
-  await page.getByRole("radio", { name: /DEMO\.01\.02\.201/ }).check();
+  await page.getByLabel("Search by polling unit code or name").fill("99-05-02-201");
+  await page.getByRole("radio", { name: /99-05-02-201/ }).check();
   await page.getByRole("button", { name: "Yes, this is the polling unit" }).click();
   await page.locator('input[type="file"]:not([capture])').setInputFiles(PHOTO);
   await expect(page.getByRole("heading", { name: "Check your photo" })).toBeVisible();
@@ -79,10 +79,10 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
 
   // ---- Contributor: capture and upload.
   const id = await captureAndUpload(page);
-  await expect(page.getByRole("heading", { level: 1, name: /Result photo for DEMO\.01\.02\.201/ })).toBeVisible({
+  await expect(page.getByRole("heading", { level: 1, name: /Result photo for 99-05-02-201/ })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.getByRole("note", { name: "Test build notice" })).toBeVisible();
+  await expect(page.getByText(/Sample units \(code 99-…\) and their figures are fictional/)).toBeVisible();
   await expect(page.getByText("Source integrity confirmed")).toBeVisible();
   await expect(page.getByText("No figures yet.")).toBeVisible();
   // The owner never sees review controls.
@@ -103,7 +103,7 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
     await page.setViewportSize(SIZES[0]);
     await page.screenshot({ path: path.join(SHOTS, "figures-mode-360x740-viewport.png") });
   }
-  await page.getByRole("radio", { name: /Load demo figures/ }).check();
+  await page.getByRole("radio", { name: /Load sample figures/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "Type the figures" })).toBeVisible({ timeout: 20_000 });
@@ -161,20 +161,20 @@ test("figures are confirmed by the sender, then a demo reviewer records a decisi
   const rp = await reviewerCtx.newPage();
   await rp.goto("/reviewer");
   await expect(rp.getByRole("heading", { name: "Reviewer sign-in" })).toBeVisible({ timeout: 20_000 });
-  await expect(rp.getByText("These are synthetic demo reviewer accounts.")).toBeVisible();
+  await expect(rp.getByText("Sample reviewer accounts for this test build.")).toBeVisible();
   await shot(rp, "reviewer-signin");
-  await rp.getByRole("radio", { name: /Synthetic Demo Reviewer A/ }).check();
+  await rp.getByRole("radio", { name: /Reviewer A/ }).check();
   // Production deployments require the demo passcode; local dev does not show the field.
-  const passcode = rp.getByLabel("Demo passcode");
+  const passcode = rp.getByLabel("Reviewer passcode");
   if (await passcode.isVisible()) {
     const value = process.env.POLLTRACE_E2E_REVIEWER_PASSCODE;
     if (!value) throw new Error("Set POLLTRACE_E2E_REVIEWER_PASSCODE to run this test against a deployment.");
     await passcode.fill(value);
   }
-  await rp.getByRole("button", { name: "Sign in as demo reviewer" }).click();
+  await rp.getByRole("button", { name: "Sign in as reviewer" }).click();
 
   await rp.waitForURL(/\/review$/);
-  await expect(rp.getByText("Signed in as Synthetic Demo Reviewer A", { exact: true })).toBeVisible();
+  await expect(rp.getByText("Signed in as Reviewer A", { exact: true })).toBeVisible();
   await expect(rp.getByRole("link", { name: /^Review/ })).toBeVisible();
   await expect(rp.getByRole("link", { name: "Capture" })).toHaveCount(0);
   const open = rp.locator(`a[href="/evidence/${id}#review"]`).filter({ visible: true });

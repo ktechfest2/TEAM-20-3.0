@@ -11,7 +11,7 @@ import path from "node:path";
  */
 
 const expect = baseExpect.configure({ timeout: 30_000 });
-// Synthetic sheet printed for the reserved test unit DEMO.01.02.201 (reads 145 / 210 / 42), so the
+// Synthetic sheet printed for the reserved test unit 99-05-02-201 (reads 145 / 210 / 42), so the
 // polling-unit code on the sheet matches the chosen unit and review is not (rightly) blocked.
 const SHEET = path.join(__dirname, "synthetic-sheet-201.jpg");
 const SHEET_SHA256 = createHash("sha256").update(readFileSync(SHEET)).digest("hex");
@@ -22,14 +22,14 @@ async function signInReviewer(browser: Browser, who: "A" | "B"): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   await page.goto("/reviewer");
-  await page.getByRole("radio", { name: new RegExp(`Synthetic Demo Reviewer ${who}`) }).check();
-  const passcode = page.getByLabel("Demo passcode");
+  await page.getByRole("radio", { name: new RegExp(`Reviewer ${who}`) }).check();
+  const passcode = page.getByLabel("Reviewer passcode");
   if (await passcode.isVisible()) {
     const value = process.env.POLLTRACE_E2E_REVIEWER_PASSCODE;
     if (!value) throw new Error("Set POLLTRACE_E2E_REVIEWER_PASSCODE to run this test against a deployment.");
     await passcode.fill(value);
   }
-  await page.getByRole("button", { name: "Sign in as demo reviewer" }).click();
+  await page.getByRole("button", { name: "Sign in as reviewer" }).click();
   await page.waitForURL(/\/review$/);
   return page;
 }
@@ -42,8 +42,8 @@ test("live AI: suggestions → person changes one value and ticks uncertain ones
 
   // Capture + upload the synthetic sample sheet on the reserved test unit.
   await page.goto("/capture");
-  await page.getByLabel("Search by polling unit code or name").fill("201");
-  await page.getByRole("radio", { name: /DEMO\.01\.02\.201/ }).check();
+  await page.getByLabel("Search by polling unit code or name").fill("99-05-02-201");
+  await page.getByRole("radio", { name: /99-05-02-201/ }).check();
   await page.getByRole("button", { name: "Yes, this is the polling unit" }).click();
   await page.locator('input[type="file"]:not([capture])').setInputFiles(SHEET);
   await expect(page.getByRole("heading", { name: "Check your photo" })).toBeVisible();

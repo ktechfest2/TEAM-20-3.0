@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ActionBar } from "@/components/action-bar";
 import { CaptureStamp } from "@/components/stamp";
-import { DemoTag } from "@/components/demo-band";
+import { SampleTag } from "@/components/demo-band";
 import { getDB } from "@/lib/offline/db";
 import { groupedHash, receiptNumber, shortFingerprint } from "@/lib/offline/hash";
 import { ATTENTION_COPY, uploadCapture, type AttentionReason } from "@/lib/offline/sync";
@@ -93,7 +93,7 @@ export function ReceiptStep({ captureId }: { captureId: string }) {
         <Segment label="Polling unit">
           <span className="font-mono">{unit?.code ?? capture.pollingUnitId}</span>
           <span className="block">
-            {unit?.name} {capture.synthetic ? <DemoTag /> : null}
+            {unit?.name} {capture.synthetic ? <SampleTag /> : null}
           </span>
         </Segment>
         <Segment label="Taken as">

@@ -51,7 +51,7 @@ export function UnitSearch({
           Search by polling unit code or name
         </label>
         <p id={ids.hint} className="text-sm text-ink-muted">
-          Example: <span className="font-mono">DEMO.00.00.012</span>
+          Example: <span className="font-mono">99-04-07-012</span>
         </p>
         <input
           ref={searchRef}

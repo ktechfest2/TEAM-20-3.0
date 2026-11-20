@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, beforeEach } from "vitest";
 import { sha256HexNode } from "@/lib/evidence/service";
+import { findPollingUnit } from "@/lib/seed/registry";
 import { resetStorageForTests } from "@/lib/storage";
 import { resetIpLimitersForTests } from "@/lib/evidence/rate-limit";
 import { GET as getSession, POST as createSession } from "@/app/api/session/route";
@@ -124,7 +125,7 @@ describe("reviewer workflow over HTTP", () => {
     const body = {
       basedOnRevision: 1,
       formType: "EC8A",
-      pollingUnitCodeOnSheet: "DEMO.00.00.012",
+      pollingUnitCodeOnSheet: findPollingUnit("demo-pu-012")!.code,
       entries: [
         { partyCode: "PARTY_A", votes: 145, needsReview: false },
         { partyCode: "PARTY_B", votes: 210, needsReview: false },

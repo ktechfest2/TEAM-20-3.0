@@ -39,7 +39,7 @@ export async function POST(request: Request): Promise<Response> {
     const c = await storage.repo.ensureContributor({ ...template, createdAt: new Date().toISOString() });
     return json(
       200,
-      { authenticated: true, role: c.role, alias: c.alias, synthetic: true, storageMode: storage.mode },
+      { authenticated: true, role: c.role, alias: template.alias, synthetic: true, storageMode: storage.mode },
       { "Set-Cookie": sessionCookieHeader(signSessionToken(c.id)) },
     );
   } catch (err) {

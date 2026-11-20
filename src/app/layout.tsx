@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next, Source_Serif_4 } from "next/font/google";
 import { SiteHeader } from "@/components/shell/site-header";
 import { MainNav } from "@/components/shell/main-nav";
-import { DemoBand } from "@/components/demo-band";
+import { ReviewerStrip } from "@/components/shell/reviewer-strip";
 import { ServiceWorkerRegistrar } from "@/components/shell/sw-registrar";
 import "./globals.css";
 
@@ -48,10 +48,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           Skip to content
         </a>
         <SiteHeader nav={<MainNav />} />
-        <DemoBand />
+        <ReviewerStrip />
         <main id="main" className="flex flex-1 flex-col">
           {children}
         </main>
+        <footer className="border-t border-rule">
+          <p className="mx-auto max-w-6xl px-4 py-3 text-sm text-ink-muted">
+            Sample units (code 99-…) and their figures are fictional. 2023 records are historical data from Nigeria
+            2.0&rsquo;s independent crosscheck, not INEC-certified.
+          </p>
+        </footer>
         <ServiceWorkerRegistrar />
       </body>
     </html>

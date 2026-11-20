@@ -25,7 +25,7 @@ const AI_REVISION = {
   origin: "REAL_VISION",
   extractionMode: "REAL_VISION",
   formType: "EC8A",
-  pollingUnitCodeOnSheet: "DEMO.01.02.210",
+  pollingUnitCodeOnSheet: "99-05-02-210",
   entries: [
     { partyCode: "PARTY_A", votes: 145, needsReview: false },
     { partyCode: "PARTY_B", votes: 201, needsReview: true },
@@ -50,7 +50,7 @@ const HUMAN_REVISION = {
   revisionNumber: 2,
   origin: "HUMAN_CORRECTION",
   extractionMode: null,
-  pollingUnitCodeOnSheet: "DEMO.01.02.210",
+  pollingUnitCodeOnSheet: "99-05-02-210",
   entries: [
     { partyCode: "PARTY_A", votes: 145, needsReview: false },
     { partyCode: "PARTY_B", votes: 210, needsReview: false },
@@ -86,8 +86,8 @@ function trace(revisions: unknown[], status = "RECEIVED") {
       id: ID,
       electionId: "demo-election",
       pollingUnitId: "demo-pu-201",
-      pollingUnitCode: "DEMO.01.02.201",
-      pollingUnitName: "Synthetic Civic Centre",
+      pollingUnitCode: "99-05-02-201",
+      pollingUnitName: "Civic Centre",
       sourceType: "WITNESS_PHOTO",
       status,
       sha256: SHA,
@@ -203,7 +203,7 @@ test.describe("AI reading UI states (mocked API, not live AI)", () => {
     await expect(page.getByRole("heading", { name: "Enter the figures" })).toBeVisible();
     await expect(page.getByText("It can make mistakes.", { exact: false })).toBeVisible();
     await expect(page.getByText("Your photo is sent to an outside AI service to be read.")).toBeVisible();
-    for (const name of [/Read the figures with AI/, /Type the figures yourself/, /Load demo figures/])
+    for (const name of [/Read the figures with AI/, /Type the figures yourself/, /Load sample figures/])
       await expect(page.getByRole("radio", { name })).not.toBeChecked();
     await noBannedWords(page);
     await shot(page, "ai-1-mode");
@@ -291,10 +291,10 @@ test.describe("AI reading UI states (mocked API, not live AI)", () => {
       });
     });
     await page.goto(`/evidence/${ID}#review`);
-    await expect(page.getByText(/The sheet shows a different polling-unit code \(DEMO\.01\.02\.210\)/)).toBeVisible();
+    await expect(page.getByText(/The sheet shows a different polling-unit code \(99-05-02-210\)/)).toBeVisible();
     await expect(page.getByRole("radio", { name: /Accept: usable in comparison/ })).toBeDisabled();
     await expect(
-      page.getByText("Not available: the sheet shows polling unit DEMO.01.02.210, not DEMO.01.02.201."),
+      page.getByText("Not available: the sheet shows polling unit 99-05-02-210, not 99-05-02-201."),
     ).toBeVisible();
     await shot(page, "ai-9-reviewer-pu-mismatch");
   });

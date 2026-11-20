@@ -7,14 +7,12 @@ import {
   CircleCheck,
   Clock,
   Download,
-  FlaskConical,
   Lock,
   RotateCcw,
   TriangleAlert,
   WifiOff,
 } from "lucide-react";
 import { DEMO_UNIT_ID, DemoState, type DemoStageId } from "@/lib/contracts/demo";
-import { DemoTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { apiJson } from "@/components/client/api";
 import { STATUS_META } from "@/components/units/labels";
@@ -26,7 +24,7 @@ import { useOnline } from "@/lib/offline/use-network";
  * GET /api/demo or a stage/reset response.
  */
 
-const UNIT_CODE = "DEMO.00.00.012";
+const UNIT_CODE = "99-04-07-012";
 const PASS_KEY = "polltrace:demo-passcode"; // sessionStorage: this tab only, never sent anywhere else
 
 type StageInfo = { title: string; runs: ReactNode; button: string };
@@ -37,9 +35,9 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     button: "Run: two witnesses submit",
     runs: (
       <>
-        Runs the real upload (the server makes its own fingerprint), loads demo figures and confirms them, as{" "}
-        <strong>Synthetic Demo Witness 1</strong> and <strong>Synthetic Demo Witness 2</strong>. Each sends a different
-        synthetic sheet and confirms Party A 145, Party B 210, Party C 42.
+        Runs the real upload (the server makes its own fingerprint), loads sample figures and confirms them, as{" "}
+        <strong>sample Witness 1</strong> and <strong>sample Witness 2</strong>. Each sends a different
+        sample sheet and confirms Party A 145, Party B 210, Party C 42.
       </>
     ),
   },
@@ -48,7 +46,7 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     button: "Run: a copy is sent",
     runs: (
       <>
-        Runs the real upload as <strong>Synthetic Demo Witness 3</strong>, sending Witness 1&rsquo;s exact file. The
+        Runs the real upload as <strong>sample Witness 3</strong>, sending Witness 1&rsquo;s exact file. The
         fingerprints match, so the copy is counted once, never as an extra witness.
       </>
     ),
@@ -58,7 +56,7 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     button: "Run: reviewer decides",
     runs: (
       <>
-        Runs the real review service as <strong>Synthetic Demo Reviewer A</strong>: accepts all three photos, judges
+        Runs the real review service as <strong>Reviewer A</strong>: accepts all three photos, judges
         Witness 1 and Witness 2 independent, and leaves the copy from Witness 3 as &ldquo;not assessed&rdquo;.
       </>
     ),
@@ -68,8 +66,8 @@ const STAGES: Record<DemoStageId, StageInfo> = {
     button: "Run: reference added and checked",
     runs: (
       <>
-        Runs the real reference import as <strong>Synthetic Demo Reviewer B</strong> (synthetic reference: Party A 145,
-        Party B 270, Party C 42), then the real source check as <strong>Synthetic Demo Reviewer A</strong>, a different
+        Runs the real reference import as <strong>Reviewer B</strong> (sample reference: Party A 145,
+        Party B 270, Party C 42), then the real source check as <strong>Reviewer A</strong>, a different
         reviewer.
       </>
     ),
@@ -167,15 +165,9 @@ export function DemoGuide() {
       <h1 className="mt-2 text-xl md:text-2xl">Guided demo</h1>
       <p className="mt-2">
         One story in eight steps, about three minutes. Each step opens a real PollTrace screen or runs the real services
-        as a synthetic demo actor. Nothing here is a mock-up.
+        with sample accounts. Nothing here is a mock-up.
       </p>
-      <div className="mt-4 flex items-start gap-2 rounded-md border-2 border-dashed border-demo bg-demo-tint p-3 text-demo">
-        <FlaskConical aria-hidden size={20} className="mt-0.5 shrink-0" />
-        <p>
-          <strong>All data on this page is synthetic.</strong> The polling unit {UNIT_CODE}, the witnesses, the
-          reviewers and every figure are made up for the demo. They are not real people or real results.
-        </p>
-      </div>
+      <p className="mt-2 text-sm text-ink-muted">This guided demo uses sample units and sample accounts.</p>
     </header>
   );
 
@@ -289,7 +281,7 @@ export function DemoGuide() {
           <Lock aria-hidden size={20} className="mt-0.5 shrink-0" />
           <span>
             <strong>Demo mode is not set up on this server.</strong> You can still follow steps 1 to 3 and open the
-            comparison page, but the demo actors cannot be run here.
+            comparison page, but the sample accounts cannot be run here.
           </span>
         </p>
       ) : null}
@@ -300,7 +292,7 @@ export function DemoGuide() {
             Where the demo is
           </h2>
           <p className="mt-1">
-            <span className="font-mono">{doneCount}</span> of <span className="font-mono">4</span> demo-actor steps
+            <span className="font-mono">{doneCount}</span> of <span className="font-mono">4</span> sample-account steps
             done.
           </p>
           <ol className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
@@ -368,7 +360,7 @@ export function DemoGuide() {
       <ol className="grid gap-8">
         <Beat n={1} title="A voter captures the result sheet offline">
           <p>
-            Open Capture on a phone, choose <span className="font-mono">{UNIT_CODE}</span>, and use the synthetic sample
+            Open Capture on a phone, choose <span className="font-mono">{UNIT_CODE}</span>, and use the sample
             sheet. Turn on airplane mode before you press &ldquo;Save this photo&rdquo;.
           </p>
           <BeatLinks>
@@ -377,7 +369,7 @@ export function DemoGuide() {
             </Link>
             <a href="/demo/synthetic-result-sheet.jpg" download className="btn btn-secondary no-underline">
               <Download aria-hidden size={20} />
-              Download the synthetic sample sheet
+              Download the sample sheet
             </a>
           </BeatLinks>
         </Beat>
@@ -396,13 +388,13 @@ export function DemoGuide() {
 
         <Beat n={3} title="The figures are confirmed by a person">
           <p>
-            From the receipt, open the ProofTrail and choose &ldquo;Read the figures&rdquo;. &ldquo;Load demo
-            figures&rdquo; fills in figures labelled &ldquo;Demo figures — not read from this photo&rdquo;. Check them
+            From the receipt, open the ProofTrail and choose &ldquo;Read the figures&rdquo;. &ldquo;Load sample
+            figures&rdquo; fills in figures labelled &ldquo;Sample figures — not read from this photo&rdquo;. Check them
             against the photo and confirm.
           </p>
           <p>
             If &ldquo;Read the figures with AI&rdquo; is offered, use it and point out the AI SUGGESTION stamps. If not,
-            use &ldquo;Load demo figures&rdquo; and say AI reading is switched off on this server.
+            use &ldquo;Load sample figures&rdquo; and say AI reading is switched off on this server.
           </p>
           <BeatLinks>
             <Link href="/submissions" className="btn btn-secondary no-underline">
@@ -422,7 +414,7 @@ export function DemoGuide() {
         <Beat n={6} title={STAGES.REVIEWS.title}>
           {stageCard("REVIEWS")}
           <p className="mt-3 text-sm">
-            To show the review screens, sign in as Synthetic Demo Reviewer A after step 3 (this replaces the contributor
+            To show the review screens, sign in as Reviewer A after step 3 (this replaces the contributor
             session in this browser).
           </p>
           <BeatLinks>
@@ -485,7 +477,7 @@ export function DemoGuide() {
           <div className="mt-3 rounded-md border-2 border-caution bg-caution-tint p-4">
             <h3 className="text-lg font-bold">Reset the demo scenario?</h3>
             <p className="mt-2">
-              This removes only the records created by the synthetic demo actors (Witnesses 1 to 3 and Reviewers A and
+              This removes only the records created by the sample accounts (Witnesses 1 to 3 and Reviewers A and
               B) on <span className="font-mono">{UNIT_CODE}</span>. Evidence from anyone else, including a photo you
               captured live, is never changed or removed.
             </p>
@@ -608,7 +600,7 @@ function StageResult({
         <p className="text-sm">Evidence links open for a reviewer session.</p>
       ) : null}
       <p className="flex items-center gap-2 text-sm">
-        <DemoTag /> Created by synthetic demo actors.
+        Created by the sample accounts.
       </p>
     </div>
   );

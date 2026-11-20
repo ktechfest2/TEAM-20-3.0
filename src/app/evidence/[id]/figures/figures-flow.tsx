@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, FlaskConical, Info, ScanText, TriangleAlert, WifiOff } from "lucide-react";
+import { ArrowLeft, Info, ScanText, TriangleAlert, WifiOff } from "lucide-react";
 import {
   EvidenceTrace,
   ExtractResponse,
@@ -12,7 +12,6 @@ import {
 } from "@/lib/contracts/trace";
 import type { ExtractionMode, FormType } from "@/lib/contracts";
 import { partyRosterFor } from "@/lib/seed/registry";
-import { DemoTag } from "@/components/demo-band";
 import { apiJson, issueMessages } from "@/components/client/api";
 import { figureKeysFor, figureLabel, figureValue, FORM_TYPE_LABEL, Unreadable, Warnings, type FigureKey } from "@/components/evidence/figures";
 import { Stamp } from "@/components/stamp";
@@ -171,7 +170,7 @@ function Flow({ trace, reloadTrace }: { trace: EvidenceTrace; reloadTrace: () =>
       data-sticky-photo
       className="sticky top-0 z-10 -mx-4 bg-canvas px-4 lg:top-4 lg:col-span-7 lg:mx-0 lg:self-start lg:px-0"
     >
-      <PhotoPanel src={trace.originalUrl} synthetic={trace.evidence.synthetic} code={trace.evidence.pollingUnitCode} />
+      <PhotoPanel src={trace.originalUrl} code={trace.evidence.pollingUnitCode} />
     </div>
   );
 
@@ -416,7 +415,7 @@ function ModeStep({
       <p className="mt-1 text-sm text-ink-muted">Step 1 of 3</p>
       <p className="mt-2">
         <span className="font-mono font-semibold">{trace.evidence.pollingUnitCode}</span>{" "}
-        {trace.evidence.synthetic ? <DemoTag /> : null} {trace.evidence.pollingUnitName}
+        {trace.evidence.pollingUnitName}
       </p>
 
       {!available.includes("REAL_VISION") ? (
@@ -467,10 +466,10 @@ function ModeStep({
             {options.includes("DEMO_FIXTURE") ? (
               <Radio name={`${uid}-mode`} checked={choice === "DEMO_FIXTURE"} onChange={() => setChoice("DEMO_FIXTURE")}>
                 <span className="flex flex-wrap items-center gap-2 font-bold">
-                  Load demo figures <DemoTag />
+                  Load sample figures
                 </span>
                 <span className="block text-sm">
-                  Demo figures — not read from this photo. For the synthetic demo only. You must still check each one.
+                  Sample figures — not read from this photo. For testing only. You must still check each one.
                 </span>
               </Radio>
             ) : null}
@@ -648,10 +647,10 @@ function SourceNotice({ draft, latest }: { draft: Draft; latest: Revision }) {
   }
   if (draft.baseOrigin === "DEMO_FIXTURE") {
     return (
-      <div className="mt-3 rounded-md border-2 border-dashed border-demo bg-demo-tint p-3 text-demo">
+      <div className="mt-3 rounded-md border-2 border-caution bg-surface p-3">
         <p className="flex items-start gap-2">
-          <FlaskConical aria-hidden size={20} className="mt-0.5 shrink-0" />
-          <span>{draft.notice ?? "Demo figures — not read from this photo."}</span>
+          <Info aria-hidden size={20} className="mt-0.5 shrink-0" />
+          <span>Sample figures — not read from this photo.</span>
         </p>
         <p className="mt-1 font-bold">Check each number against the photo before you confirm.</p>
       </div>
@@ -922,7 +921,7 @@ function NumberField({
             {k}
           </span>
         ) : null}
-        {field.fromDemo ? <DemoTag /> : null}
+        {field.fromDemo ? <span className="text-sm text-ink-muted">sample value</span> : null}
         {keptAi ? <AiStamp /> : null}
       </div>
       {changed ? (
@@ -1233,7 +1232,7 @@ function CheckStep({
                 ) : null}
                 {r.demo ? (
                   <span className="mt-0.5 flex flex-wrap items-center gap-1 text-sm">
-                    <DemoTag /> <span className="whitespace-nowrap">from demo file</span>
+                    <span className="whitespace-nowrap">sample value, not read from the photo</span>
                   </span>
                 ) : null}
                 {r.source ?? null}
@@ -1285,10 +1284,10 @@ function CheckStep({
         {actions}
         {note}
       </div>
-      {/* DEMO values stay labelled on every step. */}
+      {/* Sample values stay labelled on every step. */}
       {draft.baseOrigin === "DEMO_FIXTURE" && latest.origin === "DEMO_FIXTURE" ? (
-        <p className="mt-4 flex items-center gap-2 text-sm text-demo">
-          <DemoTag /> Values marked &ldquo;from demo file&rdquo; were not read from this photo.
+        <p className="mt-4 text-sm text-ink-muted">
+          Values marked &ldquo;sample value&rdquo; were not read from this photo.
         </p>
       ) : null}
     </section>

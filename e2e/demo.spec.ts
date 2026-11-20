@@ -37,7 +37,7 @@ const STEPS = [
 
 async function reset(page: Page) {
   await page.getByRole("button", { name: "Reset demo scenario" }).click();
-  await expect(page.getByText(/removes only the records created by the synthetic demo actors/)).toBeVisible();
+  await expect(page.getByText(/removes only the records created by the sample accounts/)).toBeVisible();
   await page.getByRole("button", { name: "Reset now" }).click();
   await expect(page.getByText(/Demo scenario reset/)).toBeVisible();
 }
@@ -47,7 +47,7 @@ test("guided demo: wrong passcode, reset, four stages → +60, reset", async ({ 
   await page.goto("/");
   await page.getByRole("link", { name: "Guided demo" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Guided demo" })).toBeVisible();
-  await expect(page.getByText("All data on this page is synthetic.")).toBeVisible();
+  await expect(page.getByText("This guided demo uses sample units and sample accounts.")).toBeVisible();
   await expect(page.getByText("Demo mode is not set up on this server.")).toHaveCount(0);
 
   // Wrong passcode: visible error, nothing runs.
@@ -59,7 +59,7 @@ test("guided demo: wrong passcode, reset, four stages → +60, reset", async ({ 
 
   await page.getByLabel("Demo passcode").fill(PASS);
   await reset(page);
-  await expect(page.getByText("0 of 4 demo-actor steps done.")).toBeVisible();
+  await expect(page.getByText("0 of 4 sample-account steps done.")).toBeVisible();
   // Later steps are blocked, with the reason visible.
   await expect(page.getByRole("button", { name: STEPS[1].button })).toBeDisabled();
   await expect(page.getByText(/Run step 4 first/)).toBeVisible();
@@ -69,12 +69,12 @@ test("guided demo: wrong passcode, reset, four stages → +60, reset", async ({ 
     await page.getByRole("button", { name: s.button }).click();
     await expect(page.getByRole("button", { name: s.button })).toHaveCount(0); // replaced by its result
   }
-  await expect(page.getByText("4 of 4 demo-actor steps done.")).toBeVisible();
+  await expect(page.getByText("4 of 4 sample-account steps done.")).toBeVisible();
   await expect(page.getByText("Differs from reference").first()).toBeVisible();
   await shot(page, "demo-done");
 
   // The real public comparison shows the +60.
-  await page.getByRole("link", { name: /Open the comparison for DEMO\.00\.00\.012/ }).click();
+  await page.getByRole("link", { name: /Open the comparison for 99-04-07-012/ }).click();
   await page.waitForURL(/\/units\/demo-pu-012$/);
   const rowB = page.getByRole("row", { name: /Party B/ });
   await expect(rowB).toContainText("+60");
@@ -84,6 +84,6 @@ test("guided demo: wrong passcode, reset, four stages → +60, reset", async ({ 
   // Reset: back to the unit's state without demo rows (empty store → no evidence).
   await page.goto("/demo");
   await reset(page);
-  await expect(page.getByText("0 of 4 demo-actor steps done.")).toBeVisible();
-  await expect(page.getByText(/Comparison status for DEMO\.00\.00\.012 is now: No evidence yet/)).toBeVisible();
+  await expect(page.getByText("0 of 4 sample-account steps done.")).toBeVisible();
+  await expect(page.getByText(/Comparison status for 99-04-07-012 is now: No evidence yet/)).toBeVisible();
 });

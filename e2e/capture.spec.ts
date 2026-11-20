@@ -49,8 +49,8 @@ function trackUploads(page: Page) {
 
 async function captureUpToSave(page: Page, photo: string) {
   await page.goto("/capture");
-  await page.getByLabel("Search by polling unit code or name").fill("201");
-  await page.getByRole("radio", { name: /DEMO\.01\.02\.201/ }).check();
+  await page.getByLabel("Search by polling unit code or name").fill("99-05-02-201");
+  await page.getByRole("radio", { name: /99-05-02-201/ }).check();
   await page.getByRole("button", { name: "Yes, this is the polling unit" }).click();
   await page.locator('input[type="file"]:not([capture])').setInputFiles(photo);
   await expect(page.getByRole("heading", { name: "Check your photo" })).toBeVisible();
@@ -62,9 +62,9 @@ test("capture → local receipt survives refresh → uploads exactly once", asyn
 
   // Step 1: choose and explicitly confirm the polling unit.
   await page.goto("/capture");
-  await expect(page.getByRole("note", { name: "Test build notice" })).toBeVisible();
-  await page.getByLabel("Search by polling unit code or name").fill("201");
-  await page.getByRole("radio", { name: /DEMO\.01\.02\.201/ }).check();
+  await expect(page.getByText(/Sample units \(code 99-…\) and their figures are fictional/)).toBeVisible();
+  await page.getByLabel("Search by polling unit code or name").fill("99-05-02-201");
+  await page.getByRole("radio", { name: /99-05-02-201/ }).check();
   await page.getByRole("button", { name: "Yes, this is the polling unit" }).click();
 
   // Step 2: pick the original photo (gallery path; camera needs a device).

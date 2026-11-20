@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, CircleCheck, CloudOff, ExternalLink, TriangleAlert, WifiOff } from "lucide-react";
 import type { EvidenceTrace, ResultRevisionView, TraceEvent } from "@/lib/contracts/trace";
-import { DemoTag } from "@/components/demo-band";
 import { Stamp } from "@/components/stamp";
 import { DecisionStamp, DuplicateStamp, EvidenceStatusStamp, IntegrityStamp, OriginStamp } from "@/components/evidence/stamps";
 import {
@@ -142,7 +141,7 @@ function Trace({
             Result photo for <span className="font-mono">{e.pollingUnitCode}</span>
           </h1>
           <p className="mt-1">
-            {e.pollingUnitName} {e.synthetic ? <DemoTag /> : null}
+            {e.pollingUnitName}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <EvidenceStatusStamp status={e.status} />
@@ -179,7 +178,6 @@ function Trace({
         <div className="lg:sticky lg:top-4">
           <OriginalPhoto
             src={trace.originalUrl}
-            synthetic={e.synthetic}
             alt={`Original photo of the result sheet sent for ${e.pollingUnitCode}`}
             className="overflow-hidden rounded-lg border border-rule bg-sunken"
             imgClassName="w-full lg:max-h-[calc(100dvh-6rem)] lg:object-contain"
@@ -272,7 +270,7 @@ function Trace({
                 <li key={r.id} className="grid gap-2 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <DecisionStamp decision={r.decision} />
-                    {r.synthetic ? <DemoTag /> : null}
+                   
                   </div>
                   <p>Independence: {INDEPENDENCE_LINE[r.independenceStatus]}</p>
                   <blockquote className="border-l-0 italic">“{r.reason}”</blockquote>
@@ -444,7 +442,7 @@ function IntactSlip({ trace }: { trace: EvidenceTrace }) {
             <Pair label="File">
               <span className="font-mono">{fileLine(e.mime, e.sizeBytes)}</span>
             </Pair>
-            <Pair label="Stored">{e.storageMode === "LOCAL_DEV" ? "On this demo server" : "Private cloud storage"}</Pair>
+            <Pair label="Stored">{e.storageMode === "LOCAL_DEV" ? "On this test server" : "Private cloud storage"}</Pair>
           </dl>
         </Row>
       </div>

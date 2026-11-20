@@ -16,7 +16,7 @@ import zlib from "node:zlib";
  * Set POLLTRACE_SHOTS_DIR to save 360px and 1280px screenshots.
  */
 
-const UNIT = { id: "demo-pu-101", code: "DEMO.00.01.101", search: "101" };
+const UNIT = { id: "demo-pu-101", code: "99-04-08-101", search: "99-04-08-101" };
 const SHOTS = process.env.POLLTRACE_SHOTS_DIR;
 const MOBILE = { viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true };
 
@@ -83,7 +83,7 @@ async function contributorSubmits(browser: Browser): Promise<{ ctx: BrowserConte
   const evidenceId = page.url().split("/evidence/")[1];
 
   await page.getByRole("link", { name: "Read the figures" }).click({ timeout: 20_000 });
-  await page.getByRole("radio", { name: /Load demo figures/ }).check();
+  await page.getByRole("radio", { name: /Load sample figures/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Type the figures" })).toBeVisible({ timeout: 20_000 });
   for (const [label, value] of [
@@ -103,15 +103,15 @@ async function signInReviewer(browser: Browser, who: "A" | "B"): Promise<{ ctx: 
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   await page.goto("/reviewer");
-  await page.getByRole("radio", { name: new RegExp(`Synthetic Demo Reviewer ${who}`) }).check();
+  await page.getByRole("radio", { name: new RegExp(`Reviewer ${who}`) }).check();
   // Production deployments require the demo passcode; local dev does not show the field.
-  const passcode = page.getByLabel("Demo passcode");
+  const passcode = page.getByLabel("Reviewer passcode");
   if (await passcode.isVisible()) {
     const value = process.env.POLLTRACE_E2E_REVIEWER_PASSCODE;
     if (!value) throw new Error("Set POLLTRACE_E2E_REVIEWER_PASSCODE to run this test against a deployment.");
     await passcode.fill(value);
   }
-  await page.getByRole("button", { name: "Sign in as demo reviewer" }).click();
+  await page.getByRole("button", { name: "Sign in as reviewer" }).click();
   await page.waitForURL(/\/review$/);
   return { ctx, page };
 }
@@ -157,7 +157,8 @@ test("finder opens a real 2023 historical unit; capture cannot pick it", async (
   await expect(
     main.getByText(/Nigeria 2\.0 independent crosscheck of 2023 result sheets\. Not INEC-certified\./),
   ).toBeVisible();
-  // No synthetic marker anywhere in the page content (the site band explains what DEMO means).
+  // A real unit carries no "Sample" marker (the footer line explains both kinds of record).
+  await expect(main.getByText("Sample unit, fictional")).toHaveCount(0);
   await expect(main.locator(".demo-tag")).toHaveCount(0);
   await shot(page, "unit-historical", [390, 1280]);
 
@@ -187,7 +188,7 @@ test("two independent photos + a source-checked reference → DIFFERS FROM REFER
   await expect(b.page.getByRole("heading", { name: "Versions" })).toBeVisible({ timeout: 20_000 });
   const addNew = b.page.getByRole("button", { name: "Add a new version" });
   if (await addNew.isVisible()) await addNew.click();
-  await expect(b.page.getByRole("radio", { name: /Synthetic demo reference/ })).toBeChecked();
+  await expect(b.page.getByRole("radio", { name: /Sample reference/ })).toBeChecked();
   await b.page.getByLabel("Describe the source").fill("Synthetic demo reference sheet for the comparison E2E test.");
   for (const [label, value] of [
     ["Party A", "145"],
@@ -251,12 +252,12 @@ test("two independent photos + a source-checked reference → DIFFERS FROM REFER
   await expect(rowB).toContainText("Reference is 60 higher");
   await expect(p.getByRole("heading", { name: "Why no allegation is made" })).toBeVisible();
   await expect(p.getByText("Source confirmed by a second reviewer")).toBeVisible();
-  await expect(p.getByText("Synthetic demo reference (not real)")).toBeVisible();
+  await expect(p.getByText("Sample reference (fictional)")).toBeVisible();
   // Redaction: no images, no links to originals or ProofTrails, no reviewer tools, no alias.
   await expect(p.locator("main img")).toHaveCount(0);
   await expect(p.locator('a[href*="/api/evidence"], a[href^="/evidence/"]')).toHaveCount(0);
   await expect(p.getByRole("link", { name: "Reference records for this unit" })).toHaveCount(0);
-  await expect(p.getByText(/Synthetic Demo Reviewer|Anonymous contributor/)).toHaveCount(0);
+  await expect(p.getByText(/Synthetic Demo Reviewer|Reviewer [AB]\b|Anonymous contributor/)).toHaveCount(0);
   await shot(p, "unit-discrepancy-public");
 
   // ---- An empty unit renders NO_EVIDENCE (only shot if one exists without data).

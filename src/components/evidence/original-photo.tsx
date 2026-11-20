@@ -5,18 +5,15 @@ import { ImageOff } from "lucide-react";
 
 /**
  * The private original, served for this viewer only. Rendered as-is (no crop, no filter).
- * When `synthetic`, a DEMO overlay sits on the top-left corner with an opaque background.
  */
 export function OriginalPhoto({
   src,
-  synthetic,
   alt,
   className = "",
   imgClassName = "w-full",
   imgStyle,
 }: {
   src: string;
-  synthetic: boolean;
   alt: string;
   className?: string;
   imgClassName?: string;
@@ -68,11 +65,6 @@ export function OriginalPhoto({
         onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}
       />
-      {synthetic ? (
-        <span className="demo-tag pointer-events-none absolute top-2 left-2">
-          DEMO<span className="sr-only"> data</span>
-        </span>
-      ) : null}
     </div>
   );
 }

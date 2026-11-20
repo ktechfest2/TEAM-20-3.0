@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Camera, ImageIcon, Sun, UserX, Maximize } from "lucide-react";
 import { ActionBar } from "@/components/action-bar";
-import { DemoTag } from "@/components/demo-band";
+import { SampleTag } from "@/components/demo-band";
 import { CAPTURE_ELECTION_ID, findElection } from "@/lib/seed/registry";
 import { StorageFullError, saveCapture } from "@/lib/offline/db";
 import { MAX_ORIGINAL_BYTES, type EvidenceSource, type PollingUnit } from "@/lib/contracts";
@@ -123,7 +123,7 @@ export function PhotoStep({
       <p className="min-w-0">
         <span className="block font-mono font-semibold">{unit.code}</span>
         <span className="block">
-          {unit.name} {unit.synthetic ? <DemoTag /> : null}
+          {unit.name} {unit.synthetic ? <SampleTag /> : null}
         </span>
       </p>
       <button
@@ -184,11 +184,6 @@ export function PhotoStep({
       <p className="mt-1 text-sm text-ink-muted">Step 2 of 3</p>
       {unitLine}
       <figure className="relative mt-4 overflow-hidden rounded-lg border border-rule bg-sunken">
-        {unit.synthetic ? (
-          <span className="absolute top-2 left-2">
-            <DemoTag />
-          </span>
-        ) : null}
         {/* eslint-disable-next-line @next/next/no-img-element -- local blob URL of the original */}
         <img src={preview} alt="The photo you chose of the result sheet" className="max-h-[60vh] w-full object-contain" />
       </figure>

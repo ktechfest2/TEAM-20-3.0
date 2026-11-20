@@ -9,7 +9,7 @@ import { OriginalPhoto } from "@/components/evidence/original-photo";
  * shrinks with the on-screen keyboard and the focused input stays visible; full height on wide screens.
  * Page pinch-zoom is never disabled; these buttons are an extra, not a replacement.
  */
-export function PhotoPanel({ src, synthetic, code }: { src: string; synthetic: boolean; code: string }) {
+export function PhotoPanel({ src, code }: { src: string; code: string }) {
   const [zoom, setZoom] = useState(1);
   const [hidden, setHidden] = useState(false);
   const max = () => (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches ? 4 : 3);
@@ -47,7 +47,6 @@ export function PhotoPanel({ src, synthetic, code }: { src: string; synthetic: b
           >
             <OriginalPhoto
               src={src}
-              synthetic={synthetic}
               alt={`Original photo of the result sheet for ${code}`}
               imgClassName="block max-w-none"
               imgStyle={{ width: `${zoom * 100}%` }}

@@ -7,7 +7,7 @@ import { partyLabel } from "@/components/client/format";
 export const DEMO_ELECTION_ID = "demo-election";
 
 export const REFERENCE_TYPE_LINE: Record<ReferenceType, string> = {
-  SYNTHETIC_DEMO: "Synthetic demo reference (not real)",
+  SYNTHETIC_DEMO: "Sample reference (fictional)",
   MANUAL_IREV: "Typed in by a reviewer from a public IReV page",
   HISTORICAL_DATASET: "From a historical dataset",
 };

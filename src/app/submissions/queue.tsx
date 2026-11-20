@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { WifiOff } from "lucide-react";
 import { CaptureStamp, CAPTURE_STAMP } from "@/components/stamp";
-import { DemoTag } from "@/components/demo-band";
 import { getDB, type CaptureStatus, type LocalCapture } from "@/lib/offline/db";
 import { receiptNumber, shortFingerprint } from "@/lib/offline/hash";
 import { ATTENTION_COPY, syncAll, uploadCapture, type AttentionReason } from "@/lib/offline/sync";
@@ -158,7 +157,7 @@ function Row({ capture: c, online }: { capture: LocalCapture; online: boolean })
         <div className="min-w-0 flex-1">
           <p className="font-mono font-semibold">{unit?.code ?? c.pollingUnitId}</p>
           <p>
-            {unit?.name} {c.synthetic ? <DemoTag /> : null}
+            {unit?.name}
           </p>
           <p className="text-sm text-ink-muted">Saved {fmt(c.capturedAt)} (phone clock)</p>
           <p className="text-sm text-ink-muted">

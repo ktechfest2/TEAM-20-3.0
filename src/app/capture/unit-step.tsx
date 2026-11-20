@@ -3,9 +3,9 @@
 import { useRef, useState } from "react";
 import { CircleCheck } from "lucide-react";
 import { ActionBar } from "@/components/action-bar";
-import { DemoTag } from "@/components/demo-band";
+import { SampleTag } from "@/components/demo-band";
 import { UnitSearch } from "@/components/units/unit-search";
-import { POLLING_UNITS, findPollingUnit } from "@/lib/seed/registry";
+import { SYNTHETIC_UNITS, findPollingUnit } from "@/lib/seed/registry";
 
 export function UnitStep({
   initialUnitId,
@@ -27,7 +27,7 @@ export function UnitStep({
       <p className="mt-3">Choose the polling unit where the result sheet is posted.</p>
       <p className="mt-3 flex items-start gap-2 text-sm">
         <CircleCheck aria-hidden size={20} className="mt-0.5 shrink-0 text-success" />
-        <span>Polling unit list saved on this device ({POLLING_UNITS.length} demo units). Works without network.</span>
+        <span>Polling unit list saved on this device ({SYNTHETIC_UNITS.length} sample units). Works without network.</span>
       </p>
 
       <UnitSearch
@@ -56,7 +56,7 @@ export function UnitStep({
                       <span className="min-w-0">
                         <span className="block font-mono font-semibold">{u.code}</span>
                         <span className="block">
-                          {u.name} {u.synthetic ? <DemoTag /> : null}
+                          {u.name} {u.synthetic ? <SampleTag /> : null}
                         </span>
                         <span className="block text-sm text-ink-muted">
                           {u.ward} · {u.lga} · {u.state}
@@ -78,7 +78,7 @@ export function UnitStep({
               <p className="text-sm text-ink-muted">You chose:</p>
               <p className="font-mono text-lg font-semibold">{chosen.code}</p>
               <p>
-                {chosen.name} {chosen.synthetic ? <DemoTag /> : null}
+                {chosen.name} {chosen.synthetic ? <SampleTag /> : null}
               </p>
               <p className="text-sm text-ink-muted">
                 {chosen.ward} · {chosen.lga} · {chosen.state}

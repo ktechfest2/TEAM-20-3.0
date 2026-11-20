@@ -4,10 +4,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { FlaskConical, TriangleAlert, WifiOff } from "lucide-react";
+import { TriangleAlert, WifiOff } from "lucide-react";
 import { ActionBar } from "@/components/action-bar";
-import { DemoTag } from "@/components/demo-band";
-import { plural } from "@/components/client/format";
+import { displayAlias, plural } from "@/components/client/format";
 import { refreshSession, signOut, useSession } from "@/components/client/session";
 import { getDB } from "@/lib/offline/db";
 import { useOnline } from "@/lib/offline/use-network";
@@ -15,8 +14,8 @@ import { useOnline } from "@/lib/offline/use-network";
 type Failure = "wrongPasscode" | "notSetUp" | "disabled" | "rateLimited" | "network" | "other" | null;
 
 const REVIEWERS = [
-  { value: "A", name: "Synthetic Demo Reviewer A" },
-  { value: "B", name: "Synthetic Demo Reviewer B" },
+  { value: "A", name: "Reviewer A" },
+  { value: "B", name: "Reviewer B" },
 ] as const;
 
 /** Same-origin path only; anything else falls back to the review list. */
@@ -59,7 +58,7 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
       <section>
         <h1 className="text-xl md:text-2xl">Reviewer sign-in</h1>
         <p className="mt-4">
-          You are signed in as <strong>{s.alias}</strong> <DemoTag />
+          You are signed in as <strong>{displayAlias(s.alias)}</strong>
         </p>
         <div className="mt-4 grid gap-2">
           <Link href="/review" className="btn btn-primary w-full no-underline">
@@ -143,7 +142,7 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
         disabled={busy || blockedReason !== null}
         onClick={() => void submit()}
       >
-        {busy ? "Signing in…" : "Sign in as demo reviewer"}
+        {busy ? "Signing in…" : "Sign in as reviewer"}
       </button>
       {back}
     </>
@@ -156,15 +155,7 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
         Reviewer sign-in
       </h1>
 
-      <div className="mt-4 rounded-md border-2 border-dashed border-demo bg-demo-tint p-4 text-demo">
-        <p className="flex items-start gap-2">
-          <FlaskConical aria-hidden size={20} className="mt-0.5 shrink-0" />
-          <span>
-            <strong>These are synthetic demo reviewer accounts.</strong> They are not real people and do not represent
-            any accreditation, election body or organisation. Decisions made with them are labelled as demo decisions.
-          </span>
-        </p>
-      </div>
+      <p className="mt-2 text-sm text-ink-muted">Sample reviewer accounts for this test build.</p>
 
       {!online ? (
         <p className="mt-4 flex items-start gap-3 rounded-md bg-sunken p-4">
@@ -203,11 +194,11 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
         <fieldset aria-describedby={`${uid}-hint${chooseError ? ` ${uid}-err` : ""}`}>
           <legend className="text-lg font-bold">Sign in as</legend>
           <p id={`${uid}-hint`} className="text-sm text-ink-muted">
-            Two demo reviewers exist so you can show that a second person reviews independently.
+            Two sample reviewers exist so you can show that a second person reviews independently.
           </p>
           {chooseError && !reviewer ? (
             <p id={`${uid}-err`} className="mt-1 text-caution">
-              Choose a demo reviewer.
+              Choose a reviewer.
             </p>
           ) : null}
           <div className="mt-2 grid gap-2">
@@ -226,7 +217,6 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
                   className="size-5 shrink-0 accent-primary"
                 />
                 <span className="font-bold">{r.name}</span>
-                <DemoTag />
               </label>
             ))}
           </div>
@@ -235,10 +225,10 @@ export function ReviewerSignIn({ passcodeRequired }: { passcodeRequired: boolean
         {passcodeRequired ? (
           <div className="mt-6">
             <label htmlFor={`${uid}-pass`} className="text-lg font-bold">
-              Demo passcode
+              Reviewer passcode
             </label>
             <p id={`${uid}-pass-hint`} className="text-sm text-ink-muted">
-              Given to you by the demo organiser.
+              Given to you by the organiser of this test build.
             </p>
             <input
               id={`${uid}-pass`}

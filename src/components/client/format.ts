@@ -43,3 +43,7 @@ export const DECISION_WORD: Record<ReviewDecision, string> = {
 };
 
 export const plural = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : many);
+
+/** Reviewer display name: server aliases like "Synthetic Demo Reviewer A" are shown as "Reviewer A". */
+export const displayAlias = (alias: string | undefined | null) =>
+  alias ? alias.replace(/^(synthetic\s+)?(demo\s+)?(sample\s+)?/i, "").replace(/^reviewer/i, "Reviewer") : "a reviewer";

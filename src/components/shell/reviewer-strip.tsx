@@ -3,17 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { UserCheck } from "lucide-react";
-import { DemoTag } from "@/components/demo-band";
 import { isReviewer, signOut, useSession } from "@/components/client/session";
+import { displayAlias } from "@/components/client/format";
 
-/** Identity strip shown on every page while a (synthetic demo) reviewer is signed in. */
+/** Identity strip shown on every page while a (sample) reviewer is signed in. */
 export function ReviewerStrip() {
   const session = useSession();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   if (!isReviewer(session) || session.status !== "ready") return null;
-  const { alias, synthetic } = session.session;
+  const { alias } = session.session;
 
   return (
     <div className="border-b border-rule bg-sunken text-ink">
@@ -23,9 +23,9 @@ export function ReviewerStrip() {
           <UserCheck aria-hidden size={20} strokeWidth={2} className="hidden shrink-0 sm:block" />
           <span className="min-w-0">
             <span className="sr-only sm:not-sr-only">Signed in as </span>
-            <strong className="whitespace-nowrap">{alias ?? "a reviewer"}</strong>
+            <strong className="whitespace-nowrap">{displayAlias(alias)}</strong>
           </span>
-          {synthetic ? <DemoTag /> : null}
+         
         </p>
         <div className="flex shrink-0 items-center gap-2">
           {failed ? (
